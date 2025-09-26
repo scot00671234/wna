@@ -108,18 +108,20 @@ function startStream() {
     const ffmpegArgs = [
         '-re', // Read input at native frame rate
         '-stream_loop', '-1', // Loop the input indefinitely
-        '-timeout', '10000000', // 10 second timeout for network operations
+        '-timeout', '30000000', // 30 second timeout for network operations
         '-reconnect', '1', // Enable reconnection
         '-reconnect_streamed', '1', // Reconnect for streamed content
-        '-reconnect_delay_max', '2', // Max reconnect delay in seconds
+        '-reconnect_delay_max', '5', // Max reconnect delay in seconds
+        '-reconnect_at_eof', '1', // Reconnect at end of file
         '-i', videoUrl, // Input video URL
         '-c', 'copy', // Copy streams without re-encoding
         '-f', 'flv', // Output format for RTMP
-        '-flvflags', 'no_duration_filesize',
-        '-bufsize', '2000k', // Set buffer size
-        '-maxrate', '2000k', // Set max bitrate to prevent spikes
-        '-tcp_nodelay', '1', // Reduce latency
+        '-flvflags', 'no_duration_filesize+no_metadata',
+        '-avoid_negative_ts', 'make_zero', // Handle timestamp issues
+        '-fflags', '+genpts+flush_packets', // Generate PTS and flush packets
         '-rtmp_live', 'live', // RTMP live streaming mode
+        '-rtmp_buffer', '1000', // RTMP buffer size
+        '-rtmp_flush_interval', '10', // Flush every 10 packets
         fullRtmpUrl
     ];
 
@@ -276,5 +278,5 @@ app.listen(PORT, '0.0.0.0', () => {
     
     // Auto-start streaming when server starts
     console.log('Auto-starting stream...');
-    setTimeout(() => startStream(), 2000);
+    setTimeout(() => startStream(), 5000);
 });
