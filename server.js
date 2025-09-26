@@ -8,9 +8,64 @@ let streamProcess = null;
 let streamStatus = 'stopped';
 let lastError = null;
 let startTime = null;
+let restartAttempts = 0;
+let maxRestartAttempts = 10;
+let baseRestartDelay = 5000; // 5 seconds
+let maxRestartDelay = 300000; // 5 minutes
 
 // Middleware
 app.use(express.json());
+
+// Determine if stream should restart based on error code
+function shouldRestartStream(exitCode) {
+    // Don't restart if we've exceeded max attempts
+    if (restartAttempts >= maxRestartAttempts) {
+        console.log(`Maximum restart attempts (${maxRestartAttempts}) reached`);
+        return false;
+    }
+    
+    // Log the exit code for monitoring
+    console.log(`FFmpeg exit code: ${exitCode} - determining restart action`);
+    
+    // Most exit codes should trigger restart, especially network-related ones
+    // Only a very small set of codes indicate truly fatal configuration errors
+    const fatalCodes = []; // Start with no fatal codes - let everything restart
+    
+    if (fatalCodes.includes(exitCode)) {
+        console.log(`Fatal error code ${exitCode}, not restarting`);
+        return false;
+    }
+    
+    // All exit codes (including 1, 152, etc.) should restart for network resilience
+    console.log(`Exit code ${exitCode} is retryable, scheduling restart`);
+    return true;
+}
+
+// Schedule restart with exponential backoff
+function scheduleRestart() {
+    restartAttempts++;
+    
+    // Calculate delay with exponential backoff
+    const delay = Math.min(
+        baseRestartDelay * Math.pow(2, restartAttempts - 1),
+        maxRestartDelay
+    );
+    
+    console.log(`Scheduling restart attempt ${restartAttempts}/${maxRestartAttempts} in ${delay/1000} seconds`);
+    
+    setTimeout(() => {
+        console.log(`Restart attempt ${restartAttempts}: Starting stream...`);
+        startStream();
+    }, delay);
+}
+
+// Reset restart attempts on successful connection
+function resetRestartAttempts() {
+    if (restartAttempts > 0) {
+        console.log(`Stream stable, resetting restart attempts (was ${restartAttempts})`);
+        restartAttempts = 0;
+    }
+}
 
 // Convert Dropbox share URL to direct download URL
 function convertDropboxUrl(shareUrl) {
@@ -49,14 +104,22 @@ function startStream() {
     console.log('RTMP URL:', fullRtmpUrl);
     console.log('Video Source:', videoUrl);
     
-    // FFmpeg command to stream video from URL to RTMP
+    // FFmpeg command to stream video from URL to RTMP with enhanced stability
     const ffmpegArgs = [
         '-re', // Read input at native frame rate
         '-stream_loop', '-1', // Loop the input indefinitely
+        '-timeout', '10000000', // 10 second timeout for network operations
+        '-reconnect', '1', // Enable reconnection
+        '-reconnect_streamed', '1', // Reconnect for streamed content
+        '-reconnect_delay_max', '2', // Max reconnect delay in seconds
         '-i', videoUrl, // Input video URL
         '-c', 'copy', // Copy streams without re-encoding
         '-f', 'flv', // Output format for RTMP
         '-flvflags', 'no_duration_filesize',
+        '-bufsize', '2000k', // Set buffer size
+        '-maxrate', '2000k', // Set max bitrate to prevent spikes
+        '-tcp_nodelay', '1', // Reduce latency
+        '-rtmp_live', 'live', // RTMP live streaming mode
         fullRtmpUrl
     ];
 
@@ -73,9 +136,17 @@ function startStream() {
         const output = data.toString();
         console.log(`FFmpeg stderr: ${output}`);
         
-        // Check if stream is successfully connected
+        // Check if stream is successfully connected and stable
         if (output.includes('Stream mapping:') || output.includes('fps=')) {
-            streamStatus = 'streaming';
+            if (streamStatus === 'starting') {
+                streamStatus = 'streaming';
+                // Reset restart attempts after 30 seconds of stable streaming
+                setTimeout(() => {
+                    if (streamStatus === 'streaming') {
+                        resetRestartAttempts();
+                    }
+                }, 30000);
+            }
         }
     });
 
@@ -87,13 +158,17 @@ function startStream() {
             streamStatus = 'error';
             lastError = `FFmpeg exited with code ${code}`;
             
-            // Auto-restart after 5 seconds if there was an error
-            setTimeout(() => {
-                console.log('Attempting to restart stream...');
-                startStream();
-            }, 5000);
+            // Check if we should restart based on error code and attempt count
+            if (shouldRestartStream(code)) {
+                scheduleRestart();
+            } else {
+                console.log('Stream stopped due to fatal error or too many restart attempts');
+                streamStatus = 'failed';
+            }
         } else {
             streamStatus = 'stopped';
+            // Reset restart attempts on clean exit
+            restartAttempts = 0;
         }
     });
 
@@ -103,11 +178,8 @@ function startStream() {
         lastError = error.message;
         streamProcess = null;
         
-        // Auto-restart after 5 seconds
-        setTimeout(() => {
-            console.log('Attempting to restart stream after error...');
-            startStream();
-        }, 5000);
+        // Schedule restart with exponential backoff
+        scheduleRestart();
     });
 }
 
@@ -118,6 +190,7 @@ function stopStream() {
         streamProcess = null;
         streamStatus = 'stopped';
         startTime = null;
+        restartAttempts = 0; // Reset attempts when manually stopped
         console.log('Stream stopped');
     }
 }
@@ -132,12 +205,16 @@ app.get('/health', (req, res) => {
         uptimeFormatted: formatUptime(uptime),
         lastError: lastError,
         timestamp: new Date().toISOString(),
-        pid: streamProcess ? streamProcess.pid : null
+        pid: streamProcess ? streamProcess.pid : null,
+        restartAttempts: restartAttempts,
+        maxRestartAttempts: maxRestartAttempts
     });
 });
 
 // Stream control endpoints
 app.post('/start', (req, res) => {
+    // Reset restart attempts when manually starting
+    restartAttempts = 0;
     startStream();
     res.json({ message: 'Stream start requested', status: streamStatus });
 });
@@ -158,6 +235,7 @@ app.get('/', (req, res) => {
     res.json({
         service: 'RTMP Streaming Service',
         status: streamStatus,
+        restartAttempts: restartAttempts,
         endpoints: {
             health: '/health',
             start: '/start (POST)',
