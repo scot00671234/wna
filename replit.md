@@ -8,6 +8,11 @@ This is a 24/7 streaming service that streams video content from Dropbox to Live
 
 ## Recent Changes
 
+- **2025-09-26**: **REPLIT SETUP COMPLETE**: Successfully configured for Replit environment - FFmpeg installed, workflow configured, deployment ready
+- **2025-09-26**: Configured Replit VM deployment for stateful streaming service with proper port 5000 binding
+- **2025-09-26**: Installed system dependencies (FFmpeg) and Node.js dependencies for Replit environment
+- **2025-09-26**: Set up workflow "Streaming Service" with npm start command for continuous operation
+- **2025-09-26**: Verified API endpoints functioning correctly (/health, /stats, /, control endpoints)
 - **2025-09-26**: **PRODUCTION-READY**: Comprehensive VPS streaming fixes - resolved all FFmpeg compatibility issues, implemented secure 24/7 streaming
 - **2025-09-26**: Fixed FFmpeg "Option not found" errors by removing unsupported options (-reconnect_on_network_error, -reconnect_on_http_error, -rtmp_conn_timeout)
 - **2025-09-26**: Enhanced VPS stability - Replaced -timeout with -rw_timeout and removed -stream_loop for HTTP sources (Dropbox compatibility)
@@ -85,6 +90,14 @@ Project requirement: Lightweight GitHub-compatible codebase (no large video file
 - Network connectivity for Dropbox and LiveKit services
 
 ## Deployment
+
+### Replit Deployment (Current Setup)
+- **Status**: ✅ Ready for production deployment
+- **Configuration**: VM deployment target for stateful streaming service
+- **Port**: Configured for port 5000 with proper host binding (0.0.0.0)
+- **Workflow**: "Streaming Service" configured with npm start command
+- **Dependencies**: FFmpeg system dependency installed
+- **Environment**: Requires secrets configuration via Replit Secrets for production use
 
 ### Docker Deployment (VPS/Dokploy)
 - `Dockerfile` - Production-ready container with FFmpeg
