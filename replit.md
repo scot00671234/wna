@@ -8,15 +8,15 @@ This is a 24/7 streaming service that streams video content from Dropbox to Live
 
 ## Recent Changes
 
-- **2025-09-26**: Enhanced VPS stability - Fixed FFmpeg exit code 234 by replacing codec copy with explicit encoding
-- **2025-09-26**: Implemented progressive backoff restart strategy with exponential delay increases
-- **2025-09-26**: Added comprehensive error diagnostics and enhanced logging for production debugging
-- **2025-09-26**: Improved network resilience with better RTMP connection handling and timeout configuration
-- **2025-09-26**: Verified Replit environment setup with proper port 5000 configuration
-- **2025-09-26**: Created complete 24/7 streaming service with auto-restart functionality
-- **2025-09-26**: Fixed critical error handling to prevent crashes on missing environment variables
-- **2025-09-26**: Verified streaming pipeline works correctly with Dropbox URL conversion
-- **2025-09-26**: Added Docker setup for VPS deployment via Dokploy
+- **2025-09-26**: **PRODUCTION-READY**: Comprehensive VPS streaming fixes - resolved all FFmpeg compatibility issues, implemented secure 24/7 streaming
+- **2025-09-26**: Fixed FFmpeg "Option not found" errors by removing unsupported options (-reconnect_on_network_error, -reconnect_on_http_error, -rtmp_conn_timeout)
+- **2025-09-26**: Enhanced VPS stability - Replaced -timeout with -rw_timeout and removed -stream_loop for HTTP sources (Dropbox compatibility)
+- **2025-09-26**: Implemented intelligent EOF detection with proper fallback - only immediate restart for actual EOF, backoff for errors
+- **2025-09-26**: Added rate limiting for EOF restarts (1s normal, 3s if frequent) to prevent source hammering on short files
+- **2025-09-26**: Fixed critical security issues - masked stream key in all logs and enforced CONTROL_KEY authentication for endpoints
+- **2025-09-26**: Enhanced port configuration - forced port 5000 in production to prevent VPS deployment mismatches
+- **2025-09-26**: Implemented progressive backoff restart strategy with exponential delay increases and stability reset
+- **2025-09-26**: Added comprehensive error diagnostics with FFmpeg exit code analysis and enhanced logging
 
 ## User Preferences
 
