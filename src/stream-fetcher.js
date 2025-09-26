@@ -16,6 +16,7 @@ class StreamFetcher {
         this.prefetchQueue = [];
         this.isRunning = false;
         this.lastError = null;
+        this.fileWatcher = null; // For filesystem monitoring
         
         this.checkpointFile = path.join(cacheDir, 'checkpoint.json');
     }
@@ -106,6 +107,13 @@ class StreamFetcher {
 
     async stop() {
         this.isRunning = false;
+        
+        // Clean up file watcher
+        if (this.fileWatcher) {
+            clearInterval(this.fileWatcher);
+            this.fileWatcher = null;
+        }
+        
         await this.saveCheckpoint();
         console.log('⏹️  Stream fetcher stopped');
     }
@@ -120,7 +128,7 @@ class StreamFetcher {
         const hlsPlaylist = path.join(this.cacheDir, 'stream.m3u8');
         const ffmpegArgs = [
             '-hide_banner',
-            '-loglevel', 'warning',
+            '-loglevel', 'info', // Changed from 'warning' to get more output
             '-reconnect', '1',
             '-reconnect_streamed', '1', 
             '-reconnect_delay_max', '30',
@@ -140,31 +148,106 @@ class StreamFetcher {
             hlsPlaylist
         ];
 
+        console.log(`🔧 FFmpeg command: ffmpeg ${ffmpegArgs.join(' ')}`);
+        
         const segmentProcess = spawn('ffmpeg', ffmpegArgs);
+        
+        let hasStarted = false;
+        let lastOutput = '';
         
         segmentProcess.stderr.on('data', (data) => {
             const output = data.toString();
+            lastOutput = output;
+            
+            // Log all FFmpeg output for debugging
+            console.log(`📹 FFmpeg: ${output.trim()}`);
+            
+            // Multiple ways to detect segment creation
             if (output.includes('Opening') && output.includes('segment_')) {
-                // New segment created
                 const match = output.match(/segment_(\d+)\.ts/);
                 if (match) {
                     const segmentId = parseInt(match[1]);
                     this.registerSegment(segmentId);
                 }
             }
+            
+            // Alternative detection for segment writing
+            if (output.includes('segment_') && output.includes('.ts')) {
+                const match = output.match(/segment_(\d+)\.ts/);
+                if (match) {
+                    const segmentId = parseInt(match[1]);
+                    setTimeout(() => this.registerSegment(segmentId), 100); // Small delay to ensure file is written
+                }
+            }
+            
+            // Detect if stream is being processed
+            if (output.includes('fps=') || output.includes('time=')) {
+                hasStarted = true;
+            }
+            
+            // Error detection
+            if (output.includes('Connection refused') || 
+                output.includes('No such file') || 
+                output.includes('Invalid data') ||
+                output.includes('Protocol not found')) {
+                console.error(`❌ FFmpeg error: ${output.trim()}`);
+                this.lastError = output.trim();
+            }
         });
 
         segmentProcess.on('close', (code) => {
+            console.log(`⚠️  Segment generation exited with code ${code}`);
+            console.log(`📝 Last FFmpeg output: ${lastOutput.trim()}`);
+            
             if (this.isRunning) {
-                console.log(`⚠️  Segment generation exited with code ${code}, restarting...`);
-                setTimeout(() => this.generateSegments(), 2000);
+                const delay = hasStarted ? 2000 : 5000; // Longer delay if never started
+                console.log(`🔄 Restarting segment generation in ${delay/1000}s...`);
+                setTimeout(() => this.generateSegments(), delay);
             }
         });
 
         segmentProcess.on('error', (error) => {
-            console.error('❌ Segment generation error:', error.message);
+            console.error('❌ Segment generation spawn error:', error.message);
             this.lastError = error.message;
         });
+        
+        // Monitor segment creation via filesystem watching
+        this.startFileSystemMonitoring();
+    }
+
+    startFileSystemMonitoring() {
+        // Monitor cache directory for new segment files
+        if (this.fileWatcher) return; // Already monitoring
+        
+        console.log('👁️  Starting filesystem monitoring for segments...');
+        
+        // Check for new segments every 2 seconds
+        this.fileWatcher = setInterval(async () => {
+            if (!this.isRunning) {
+                clearInterval(this.fileWatcher);
+                this.fileWatcher = null;
+                return;
+            }
+            
+            try {
+                const files = await fs.readdir(this.cacheDir);
+                const segmentFiles = files.filter(f => f.startsWith('segment_') && f.endsWith('.ts'));
+                
+                for (const file of segmentFiles) {
+                    const match = file.match(/segment_(\d+)\.ts/);
+                    if (match) {
+                        const segmentId = parseInt(match[1]);
+                        if (!this.segments.has(segmentId)) {
+                            console.log(`🔍 Found new segment via filesystem: ${segmentId}`);
+                            await this.registerSegment(segmentId);
+                        }
+                    }
+                }
+            } catch (error) {
+                // Cache directory might not exist yet
+                console.log(`📁 Cache directory check: ${error.message}`);
+            }
+        }, 2000);
     }
 
     async registerSegment(segmentId) {
