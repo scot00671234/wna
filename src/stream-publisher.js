@@ -27,14 +27,11 @@ class StreamPublisher {
         this.isRunning = true;
         console.log('📡 Starting stream publisher...');
         console.log(`📥 Input: ${inputPath}`);
-        console.log(`🎯 Local relay: ${this.localRelayUrl}`);
+        console.log(`🎯 Direct streaming mode (no local relay)`);
         
-        // Start local relay publisher first
-        await this.startLocalRelay(inputPath);
-        
-        // Start external publishers
+        // Start direct publishers to external endpoints (skip local relay)
         for (const endpoint of this.endpoints.filter(e => e.active)) {
-            await this.startPublisher(endpoint);
+            await this.startDirectPublisher(endpoint, inputPath);
         }
     }
 
@@ -80,6 +77,114 @@ class StreamPublisher {
 
         relayProcess.on('error', (error) => {
             console.error('❌ Local relay error:', error.message);
+            this.lastError = error.message;
+        });
+    }
+
+    async startDirectPublisher(endpoint, inputPath) {
+        console.log(`📡 Starting direct publisher: ${endpoint.name} (Priority: ${endpoint.priority})`);
+        
+        // Stream directly from HLS to external RTMP endpoint
+        let ffmpegArgs;
+        
+        // Quality ladder - use different settings based on endpoint priority
+        if (endpoint.priority === 1) {
+            // Primary endpoint - full quality
+            ffmpegArgs = [
+                '-hide_banner',
+                '-loglevel', 'info',
+                '-re', // Read at native framerate for real-time streaming
+                '-f', 'hls',
+                '-live_start_index', '-3', // Follow live edge
+                '-i', inputPath, // HLS playlist file
+                '-c:v', 'libx264',
+                '-preset', 'veryfast', 
+                '-crf', '23',
+                '-maxrate', '2M',
+                '-bufsize', '4M',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-f', 'flv',
+                '-flvflags', 'no_duration_filesize',
+                '-rtmp_live', 'live',
+                '-rtmp_buffer', '2000',
+                endpoint.url
+            ];
+        } else {
+            // Backup endpoint - lower quality for reliability
+            ffmpegArgs = [
+                '-hide_banner',
+                '-loglevel', 'info',
+                '-re',
+                '-f', 'hls',
+                '-live_start_index', '-3',
+                '-i', inputPath,
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-crf', '28',
+                '-maxrate', '1M',
+                '-bufsize', '2M',
+                '-s', '640x360', // Lower resolution
+                '-c:a', 'aac',
+                '-b:a', '96k',
+                '-f', 'flv', 
+                '-flvflags', 'no_duration_filesize',
+                '-rtmp_live', 'live',
+                '-rtmp_buffer', '1000',
+                endpoint.url
+            ];
+        }
+
+        console.log(`🔧 Direct streaming command: ffmpeg ${ffmpegArgs.join(' ')}`);
+
+        const publisherProcess = spawn('ffmpeg', ffmpegArgs);
+        this.publishers.set(endpoint.name, publisherProcess);
+
+        let isConnected = false;
+        let reconnectAttempts = 0;
+        const maxReconnects = 10;
+
+        publisherProcess.stderr.on('data', (data) => {
+            const output = data.toString();
+            
+            // Log FFmpeg output for debugging
+            console.log(`📺 ${endpoint.name}: ${output.trim()}`);
+            
+            if (output.includes('fps=') && !isConnected) {
+                isConnected = true;
+                this.stats.activeConnections++;
+                console.log(`✅ ${endpoint.name}: Connected and streaming to external RTMP`);
+                reconnectAttempts = 0; // Reset on successful connection
+            } else if (output.includes('Connection refused') || 
+                      output.includes('error') ||
+                      output.includes('failed')) {
+                console.log(`⚠️  ${endpoint.name}: ${output.trim()}`);
+            }
+        });
+
+        publisherProcess.on('close', (code) => {
+            console.log(`⚠️  ${endpoint.name} exited with code ${code}`);
+            this.publishers.delete(endpoint.name);
+            isConnected = false;
+            this.stats.activeConnections = Math.max(0, this.stats.activeConnections - 1);
+            
+            if (this.isRunning && endpoint.active) {
+                reconnectAttempts++;
+                if (reconnectAttempts <= maxReconnects) {
+                    const delay = Math.min(2000 * Math.pow(1.5, reconnectAttempts - 1), 30000);
+                    console.log(`🔄 ${endpoint.name}: Reconnecting in ${delay/1000}s (attempt ${reconnectAttempts}/${maxReconnects})`);
+                    setTimeout(() => this.startDirectPublisher(endpoint, inputPath), delay);
+                    this.stats.reconnects++;
+                } else {
+                    console.log(`❌ ${endpoint.name}: Max reconnect attempts reached, marking inactive`);
+                    endpoint.active = false;
+                    this.stats.failedConnections++;
+                }
+            }
+        });
+
+        publisherProcess.on('error', (error) => {
+            console.error(`❌ ${endpoint.name} error:`, error.message);
             this.lastError = error.message;
         });
     }
