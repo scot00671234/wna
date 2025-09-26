@@ -8,4 +8,7 @@ README.md
 coverage
 .DS_Store
 *.log
-attached_assets
+server.js.backup
+cache/
+attached_assets/
+.replit

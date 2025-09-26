@@ -1,7 +1,7 @@
 FROM node:18-alpine
 
-# Install FFmpeg
-RUN apk add --no-cache ffmpeg
+# Install FFmpeg and wget for healthchecks
+RUN apk add --no-cache ffmpeg wget
 
 # Create app directory
 WORKDIR /usr/src/app
@@ -15,32 +15,15 @@ RUN npm ci --only=production
 # Copy app source
 COPY . .
 
+# Create cache directory
+RUN mkdir -p /usr/src/app/cache
+
 # Expose port
 EXPOSE 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD node -e "const http = require('http'); \
-    const options = { \
-      host: 'localhost', \
-      port: 5000, \
-      path: '/health', \
-      timeout: 2000 \
-    }; \
-    const request = http.request(options, (res) => { \
-      if (res.statusCode === 200) { \
-        console.log('Health check passed'); \
-        process.exit(0); \
-      } else { \
-        console.log('Health check failed'); \
-        process.exit(1); \
-      } \
-    }); \
-    request.on('error', () => { \
-      console.log('Health check error'); \
-      process.exit(1); \
-    }); \
-    request.end();"
+# Enhanced health check for multi-component system
+HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=5 \
+  CMD wget --no-verbose --tries=1 --spider --timeout=10 http://localhost:5000/health || exit 1
 
 # Start the application
-CMD ["npm", "start"]
+CMD ["node", "server.js"]
