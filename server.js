@@ -12,9 +12,59 @@ let restartAttempts = 0;
 let maxRestartAttempts = 10;
 let baseRestartDelay = 5000; // 5 seconds
 let maxRestartDelay = 300000; // 5 minutes
+let currentPosition = 0; // Current position in video (seconds)
+let lastStablePosition = 0; // Last known stable position for resume
+let totalStreamTime = 0; // Total accumulated stream time
+let sessionStartPosition = 0; // Position where current session started
 
 // Middleware
 app.use(express.json());
+
+// Parse FFmpeg output to extract current position
+function parsePosition(output) {
+    // Look for time=00:00:05.80 format in FFmpeg output
+    const timeMatch = output.match(/time=([0-9]{2}):([0-9]{2}):([0-9]{2})\\.([0-9]{2})/);
+    if (timeMatch) {
+        const hours = parseInt(timeMatch[1]);
+        const minutes = parseInt(timeMatch[2]);
+        const seconds = parseInt(timeMatch[3]);
+        const centiseconds = parseInt(timeMatch[4]);
+        return hours * 3600 + minutes * 60 + seconds + centiseconds / 100;
+    }
+    return null;
+}
+
+// Update current position and save stable checkpoints
+function updatePosition(newPosition) {
+    if (newPosition && newPosition >= 0) {
+        // Calculate actual position in the video (session start + current offset)
+        const actualPosition = sessionStartPosition + newPosition;
+        currentPosition = actualPosition;
+        
+        // Save as stable position every 3 seconds of progress
+        if (currentPosition - lastStablePosition >= 3) {
+            lastStablePosition = currentPosition;
+            totalStreamTime = currentPosition;
+            console.log(`✓ Position checkpoint: ${Math.floor(lastStablePosition)}s (total: ${formatTime(lastStablePosition)})`);
+        }
+    }
+}
+
+// Format seconds to HH:MM:SS format for FFmpeg
+function formatTimeForFFmpeg(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Format seconds to human readable time
+function formatTime(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
 
 // Determine if stream should restart based on error code
 function shouldRestartStream(exitCode) {
@@ -27,17 +77,8 @@ function shouldRestartStream(exitCode) {
     // Log the exit code for monitoring
     console.log(`FFmpeg exit code: ${exitCode} - determining restart action`);
     
-    // Most exit codes should trigger restart, especially network-related ones
-    // Only a very small set of codes indicate truly fatal configuration errors
-    const fatalCodes = []; // Start with no fatal codes - let everything restart
-    
-    if (fatalCodes.includes(exitCode)) {
-        console.log(`Fatal error code ${exitCode}, not restarting`);
-        return false;
-    }
-    
-    // All exit codes (including 1, 152, etc.) should restart for network resilience
-    console.log(`Exit code ${exitCode} is retryable, scheduling restart`);
+    // All exit codes should restart for maximum resilience
+    console.log(`Exit code ${exitCode} is retryable, will resume from position ${Math.floor(lastStablePosition)}s`);
     return true;
 }
 
@@ -52,9 +93,10 @@ function scheduleRestart() {
     );
     
     console.log(`Scheduling restart attempt ${restartAttempts}/${maxRestartAttempts} in ${delay/1000} seconds`);
+    console.log(`Will resume from position: ${formatTime(lastStablePosition)}`);
     
     setTimeout(() => {
-        console.log(`Restart attempt ${restartAttempts}: Starting stream...`);
+        console.log(`Restart attempt ${restartAttempts}: Resuming stream from ${formatTime(lastStablePosition)}...`);
         startStream();
     }, delay);
 }
@@ -77,7 +119,7 @@ function convertDropboxUrl(shareUrl) {
     return shareUrl.replace('?dl=0', '?dl=1').replace('/s/', '/scl/fi/');
 }
 
-// Start FFmpeg streaming process
+// Start FFmpeg streaming process with position resume capability
 function startStream() {
     if (streamProcess) {
         console.log('Stream already running');
@@ -97,15 +139,34 @@ function startStream() {
     }
     
     const videoUrl = convertDropboxUrl(rawVideoUrl);
-
     const fullRtmpUrl = `${rtmpUrl}/${streamKey}`;
+    
+    // Calculate resume position - use last stable position for restarts
+    const resumePosition = restartAttempts > 0 ? lastStablePosition : 0;
+    sessionStartPosition = resumePosition;
     
     console.log('Starting stream...');
     console.log('RTMP URL:', fullRtmpUrl);
     console.log('Video Source:', videoUrl);
+    if (resumePosition > 0) {
+        console.log(`⏯️  Resuming from position: ${formatTime(resumePosition)}`);
+    } else {
+        console.log('🎬 Starting from beginning');
+    }
     
-    // FFmpeg command to stream video from URL to RTMP with enhanced stability
+    // Build FFmpeg arguments with position resume
     const ffmpegArgs = [
+        '-hide_banner', // Reduce log verbosity
+        '-loglevel', 'info', // Set appropriate log level
+    ];
+    
+    // Add seek position if resuming
+    if (resumePosition > 0) {
+        ffmpegArgs.push('-ss', formatTimeForFFmpeg(resumePosition));
+    }
+    
+    // Add input and streaming arguments
+    ffmpegArgs.push(
         '-re', // Read input at native frame rate
         '-stream_loop', '-1', // Loop the input indefinitely
         '-timeout', '30000000', // 30 second timeout for network operations
@@ -120,10 +181,10 @@ function startStream() {
         '-avoid_negative_ts', 'make_zero', // Handle timestamp issues
         '-fflags', '+genpts+flush_packets', // Generate PTS and flush packets
         '-rtmp_live', 'live', // RTMP live streaming mode
-        '-rtmp_buffer', '1000', // RTMP buffer size
+        '-rtmp_buffer', '1000', // RTMP buffer size  
         '-rtmp_flush_interval', '10', // Flush every 10 packets
         fullRtmpUrl
-    ];
+    );
 
     streamProcess = spawn('ffmpeg', ffmpegArgs);
     startTime = new Date();
@@ -138,10 +199,18 @@ function startStream() {
         const output = data.toString();
         console.log(`FFmpeg stderr: ${output}`);
         
+        // Parse position from output and update tracking
+        const position = parsePosition(output);
+        if (position !== null) {
+            updatePosition(position);
+        }
+        
         // Check if stream is successfully connected and stable
         if (output.includes('Stream mapping:') || output.includes('fps=')) {
             if (streamStatus === 'starting') {
                 streamStatus = 'streaming';
+                console.log(`🔴 Stream active, broadcasting from position ${formatTime(sessionStartPosition)}`);
+                
                 // Reset restart attempts after 30 seconds of stable streaming
                 setTimeout(() => {
                     if (streamStatus === 'streaming') {
@@ -154,6 +223,7 @@ function startStream() {
 
     streamProcess.on('close', (code) => {
         console.log(`FFmpeg process exited with code ${code}`);
+        console.log(`Last position: ${formatTime(currentPosition)} | Stable checkpoint: ${formatTime(lastStablePosition)}`);
         streamProcess = null;
         
         if (code !== 0) {
@@ -197,7 +267,16 @@ function stopStream() {
     }
 }
 
-// Health check endpoint
+// Reset position tracking (for testing or manual resets)
+function resetPosition() {
+    currentPosition = 0;
+    lastStablePosition = 0;
+    totalStreamTime = 0;
+    sessionStartPosition = 0;
+    console.log('Position tracking reset to beginning');
+}
+
+// Health check endpoint with position info
 app.get('/health', (req, res) => {
     const uptime = startTime ? Math.floor((Date.now() - startTime) / 1000) : 0;
     
@@ -209,7 +288,13 @@ app.get('/health', (req, res) => {
         timestamp: new Date().toISOString(),
         pid: streamProcess ? streamProcess.pid : null,
         restartAttempts: restartAttempts,
-        maxRestartAttempts: maxRestartAttempts
+        maxRestartAttempts: maxRestartAttempts,
+        currentPosition: Math.floor(currentPosition),
+        currentPositionFormatted: formatTime(currentPosition),
+        lastStablePosition: Math.floor(lastStablePosition),
+        lastStablePositionFormatted: formatTime(lastStablePosition),
+        totalStreamTime: Math.floor(totalStreamTime),
+        totalStreamTimeFormatted: formatTime(totalStreamTime)
     });
 });
 
@@ -218,7 +303,11 @@ app.post('/start', (req, res) => {
     // Reset restart attempts when manually starting
     restartAttempts = 0;
     startStream();
-    res.json({ message: 'Stream start requested', status: streamStatus });
+    res.json({ 
+        message: 'Stream start requested', 
+        status: streamStatus,
+        resumePosition: formatTime(lastStablePosition)
+    });
 });
 
 app.post('/stop', (req, res) => {
@@ -229,7 +318,20 @@ app.post('/stop', (req, res) => {
 app.post('/restart', (req, res) => {
     stopStream();
     setTimeout(() => startStream(), 1000);
-    res.json({ message: 'Stream restart requested', status: streamStatus });
+    res.json({ 
+        message: 'Stream restart requested', 
+        status: streamStatus,
+        resumePosition: formatTime(lastStablePosition)
+    });
+});
+
+// Reset position endpoint for testing
+app.post('/reset-position', (req, res) => {
+    resetPosition();
+    res.json({ 
+        message: 'Position reset to beginning',
+        currentPosition: formatTime(currentPosition)
+    });
 });
 
 // Root endpoint
@@ -238,11 +340,14 @@ app.get('/', (req, res) => {
         service: 'RTMP Streaming Service',
         status: streamStatus,
         restartAttempts: restartAttempts,
+        currentPosition: formatTime(currentPosition),
+        lastStablePosition: formatTime(lastStablePosition),
         endpoints: {
             health: '/health',
             start: '/start (POST)',
             stop: '/stop (POST)',
-            restart: '/restart (POST)'
+            restart: '/restart (POST)',
+            resetPosition: '/reset-position (POST)'
         }
     });
 });
