@@ -8,6 +8,11 @@ This is a 24/7 streaming service that streams video content from Dropbox to Live
 
 ## Recent Changes
 
+- **2025-09-26**: Enhanced VPS stability - Fixed FFmpeg exit code 234 by replacing codec copy with explicit encoding
+- **2025-09-26**: Implemented progressive backoff restart strategy with exponential delay increases
+- **2025-09-26**: Added comprehensive error diagnostics and enhanced logging for production debugging
+- **2025-09-26**: Improved network resilience with better RTMP connection handling and timeout configuration
+- **2025-09-26**: Verified Replit environment setup with proper port 5000 configuration
 - **2025-09-26**: Created complete 24/7 streaming service with auto-restart functionality
 - **2025-09-26**: Fixed critical error handling to prevent crashes on missing environment variables
 - **2025-09-26**: Verified streaming pipeline works correctly with Dropbox URL conversion
@@ -43,9 +48,11 @@ Project requirement: Lightweight GitHub-compatible codebase (no large video file
 ### Video Streaming Pipeline
 1. Environment variable validation (RTMP_URL, STREAM_KEY, VIDEO_URL)
 2. Dropbox URL conversion from share links to direct download URLs
-3. FFmpeg process spawning with configured RTMP output and infinite loop
-4. Continuous streaming with process monitoring and auto-restart
-5. Error detection, logging, and status reporting
+3. FFmpeg process spawning with production-grade codec configuration (libx264/aac)
+4. Continuous streaming with enhanced network resilience and RTMP-specific timeouts
+5. Progressive backoff restart strategy with exponential delay increases
+6. Comprehensive error detection, diagnostics, and status reporting
+7. Exit code analysis and specific troubleshooting suggestions
 
 ### API Endpoints
 - `GET /` - Service information and available endpoints
@@ -57,8 +64,9 @@ Project requirement: Lightweight GitHub-compatible codebase (no large video file
 ## External Dependencies
 
 ### Core Dependencies
-- **Express.js**: Web framework for API server
-- **Node.js Child Process**: For FFmpeg process management
+- **Express.js**: Web framework for API server (configured for port 5000)
+- **Node.js Child Process**: For FFmpeg process management with enhanced error handling
+- **FFmpeg**: Production-grade video encoding with libx264/aac codecs for VPS stability
 
 ### External Services
 - **Dropbox**: Video file hosting and content source (no local storage)
