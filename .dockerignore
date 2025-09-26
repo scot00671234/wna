@@ -1,14 +1,77 @@
+# Dependencies
 node_modules
-npm-debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+.nyc_output
+
+# Environment files (should be set via Dokploy)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor directories and files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
 .git
 .gitignore
+
+# Documentation
 README.md
-.env
-.nyc_output
-coverage
-.DS_Store
-*.log
-server.js.backup
+replit.md
+*.md
+
+# Cache directories (will be volume mounted in Dokploy)
 cache/
-attached_assets/
+recordings/
+hls/
+
+# Development files
+*.log
+.tmp
+server.js.backup
+
+# Build artifacts
+dist/
+build/
+
+# Test files
+test/
+tests/
+__tests__/
+
+# Note: Dockerfile and docker-compose.yml are needed for Dokploy builds
+# Don't exclude these critical files
+
+# Replit specific files
 .replit
+replit.nix
+attached_assets/
+
+# Temporary files
+.tmp/
