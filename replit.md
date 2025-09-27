@@ -4,10 +4,11 @@
 
 This is a 24/7 streaming service that streams video content from Dropbox to LiveKit using RTMP protocol. The service is built as a Node.js web application that manages FFmpeg processes to handle the video streaming pipeline. It provides REST API endpoints to control streaming operations and monitor stream status.
 
-**Status**: ✅ Complete and fully functional - Replit environment setup complete, ready for streaming configuration
+**Status**: ✅ Complete and fully functional - All FFmpeg errors resolved, ready for streaming configuration
 
 ## Recent Changes
 
+- **2025-09-27**: **HARDWARE ACCELERATION ERRORS FIXED**: Resolved FFmpeg VAAPI crashes by disabling problematic hardware acceleration detection
 - **2025-09-27**: **REPLIT IMPORT COMPLETE**: Successfully imported GitHub project and configured for Replit environment
 - **2025-09-27**: ✅ FFmpeg system dependency installed and verified (v7.1.1)
 - **2025-09-27**: ✅ Node.js dependencies installed without vulnerabilities 
