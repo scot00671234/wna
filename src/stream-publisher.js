@@ -92,7 +92,7 @@ class StreamPublisher {
             // Primary endpoint - full quality
             ffmpegArgs = [
                 '-hide_banner',
-                '-loglevel', 'warning',
+                '-loglevel', 'info',
                 '-re', // Read at native framerate for real-time streaming
                 '-f', 'hls',
                 '-live_start_index', '-3', // Follow live edge
@@ -115,7 +115,7 @@ class StreamPublisher {
             // Backup endpoint - lower quality for reliability
             ffmpegArgs = [
                 '-hide_banner',
-                '-loglevel', 'warning',
+                '-loglevel', 'info',
                 '-re',
                 '-f', 'hls',
                 '-live_start_index', '-3',
@@ -149,9 +149,9 @@ class StreamPublisher {
         publisherProcess.stderr.on('data', (data) => {
             const output = data.toString();
             
-            // Only log errors and connection status to reduce I/O
-            if (output.includes('error') || output.includes('failed') || 
-                (output.includes('fps=') && !isConnected) || output.includes('Connection refused')) {
+            // Smart logging: Show connection status, errors, but limit fps spam
+            if (output.includes('error') || output.includes('failed') || output.includes('Connection refused') ||
+                (output.includes('fps=') && !isConnected)) {
                 console.log(`📺 ${endpoint.name}: ${output.trim()}`);
             }
             

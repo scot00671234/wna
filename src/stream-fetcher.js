@@ -131,7 +131,7 @@ class StreamFetcher {
         
         const ffmpegArgs = [
             '-hide_banner',
-            '-loglevel', 'warning',
+            '-loglevel', 'info',
             ...hwAccelArgs,
             '-reconnect', '1',
             '-reconnect_streamed', '1', 
@@ -169,8 +169,10 @@ class StreamFetcher {
             const output = data.toString();
             lastOutput = output;
             
-            // Only log important FFmpeg output to reduce I/O overhead
-            if (output.includes('error') || output.includes('failed') || output.includes('warning')) {
+            // Smart logging: Show segment creation and errors, filter out fps spam
+            if (output.includes('Opening') || output.includes('segment_') || 
+                output.includes('error') || output.includes('failed') || output.includes('warning') ||
+                (output.includes('fps=') && !hasStarted)) {
                 console.log(`📹 FFmpeg: ${output.trim()}`);
             }
             
