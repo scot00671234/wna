@@ -4,11 +4,13 @@ const { spawn } = require('child_process');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Simple state tracking
+// Simple state tracking with resume capability
 let streamProcess = null;
 let isStreaming = false;
 let startTime = null;
 let lastError = null;
+let audioPosition = 0; // Track audio position in seconds for resume
+let restartAttempts = 0; // Track restart attempts to prevent endless loops
 
 // Middleware
 app.use(express.json());
@@ -44,7 +46,7 @@ async function startStreaming() {
         console.log('🎵 Starting AUDIO streaming with static image (ultra-lightweight)...');
         console.log('🎯 ZERO LAG MODE - MP3 audio + static image for maximum efficiency');
         
-        // ULTRA-LIGHTWEIGHT: Static image + MP3 audio streaming
+        // ULTRA-LIGHTWEIGHT: Static image + MP3 audio streaming with resume capability
         const ffmpegArgs = [
             '-hide_banner',
             '-loglevel', 'error', // Only show actual errors
@@ -53,41 +55,36 @@ async function startStreaming() {
             '-loop', '1',
             '-i', coverImagePath,
             
-            // INPUT 2: MP3 audio from Dropbox (enhanced stability)
+            // INPUT 2: MP3 audio from Dropbox (with resume capability)
             '-re', // Real-time streaming
             '-stream_loop', '-1', // Infinite loop for seamless playback
-            '-reconnect', '1',
-            '-reconnect_streamed', '1',
-            '-reconnect_delay_max', '5', // Faster reconnect
-            '-reconnect_on_network_error', '1',
-            '-reconnect_on_http_error', '1', 
-            '-timeout', '10000000', // 10 second timeout
-            '-user_agent', 'FFmpeg Audio Stream',
-            '-i', audioUrl,
-            
-            // VIDEO: HIGH-QUALITY static image encoding (local file = no bandwidth limits)
+        ];
+        
+        // Add seek position if resuming from a specific point (resume functionality)
+        if (audioPosition > 0) {
+            console.log(`🎯 Resuming from position: ${Math.floor(audioPosition)} seconds`);
+            ffmpegArgs.push('-ss', Math.floor(audioPosition).toString());
+        }
+        
+        ffmpegArgs.push('-i', audioUrl);
+        
+        // Continue with video and audio encoding options
+        ffmpegArgs.push(
+            // VIDEO: Simple static image encoding
             '-c:v', 'libx264',
-            '-preset', 'medium', // Better quality since it's local
-            '-tune', 'stillimage', // Optimized for static images
-            '-crf', '18', // Very high quality for local static image
-            '-maxrate', '500k', // Higher bitrate for smooth playback
-            '-bufsize', '1000k', // Larger buffer for stability
+            '-preset', 'ultrafast', // Fast encoding to reduce lag
+            '-crf', '28', // Good quality balance
+            '-r', '2', // Low framerate for static image
             '-s', '1280x720', // HD quality
-            '-r', '30', // Smooth 30fps for zero lag viewer experience
             '-pix_fmt', 'yuv420p',
+            '-g', '4', // Keyframe every 2 seconds (4 frames at 2fps)
+            '-keyint_min', '2',
             
-            // OPTIMIZED KEYFRAME SETTINGS for smooth streaming
-            '-g', '90', // GOP size: keyframe every 3 seconds (90 frames at 30fps)
-            '-keyint_min', '30', // Minimum keyframe interval  
-            '-sc_threshold', '0', // Disable scene change detection
-            '-force_key_frames', 'expr:gte(t,n_forced*2)', // Force keyframe every 2 seconds
-            
-            // AUDIO: Premium quality for audiobook content
+            // AUDIO: High quality for audiobook content
             '-c:a', 'aac',
-            '-b:a', '192k', // Premium audio quality for audiobook
-            '-ar', '48000', // High sample rate for best quality
+            '-b:a', '128k', // Good audio quality for audiobook
+            '-ar', '44100', // Standard sample rate
             '-ac', '2', // Stereo audio
-            '-profile:a', 'aac_low', // AAC-LC profile for compatibility
             
             // Map streams: video from image, audio from MP3
             '-map', '0:v:0', // Video from input 0 (image)
@@ -96,14 +93,10 @@ async function startStreaming() {
             // Ensure continuous streaming (no auto-exit)
             // Removed -shortest to maintain 24/7 continuous streaming
             
-            // OPTIMIZED RTMP OUTPUT for stability
+            // Simple RTMP OUTPUT
             '-f', 'flv',
-            '-flvflags', 'no_duration_filesize',
-            '-rtmp_live', 'live',
-            '-rtmp_buffer_size', '512k',
-            '-rtmp_flush_interval', '1',
             fullRtmpUrl
-        ];
+        );
 
         console.log('🚀 Direct stream command:');
         console.log(`ffmpeg ${ffmpegArgs.join(' ')}`);
@@ -112,6 +105,14 @@ async function startStreaming() {
         isStreaming = true;
         startTime = new Date();
         lastError = null;
+        
+        // Reset restart counter only after streaming runs successfully for 30 seconds
+        setTimeout(() => {
+            if (isStreaming && streamProcess && !streamProcess.killed) {
+                restartAttempts = 0;
+                console.log('✅ Stream stable for 30 seconds - reset restart counter');
+            }
+        }, 30000);
 
         streamProcess.stdout.on('data', (data) => {
             // Minimal output
@@ -130,8 +131,29 @@ async function startStreaming() {
             console.log(`⚠️  Stream process exited with code ${code}`);
             isStreaming = false;
             
-            // Auto-restart always (audio will loop via reconnect_at_eof)
-            console.log('🔄 Restarting stream in 3 seconds (looping audio)...');
+            // Track restart attempts to prevent endless loops
+            restartAttempts++;
+            
+            if (code === 8) {
+                console.log('❌ FFmpeg configuration error (exit code 8) - stopping auto-restart');
+                lastError = 'FFmpeg configuration error - check command parameters';
+                return;
+            }
+            
+            if (restartAttempts > 10) {
+                console.log('❌ Too many restart attempts - stopping auto-restart');
+                lastError = 'Maximum restart attempts exceeded';
+                return;
+            }
+            
+            // Update audio position for resume (estimate based on uptime)
+            if (startTime) {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                audioPosition += elapsed;
+                console.log(`📍 Audio position: ${audioPosition} seconds`);
+            }
+            
+            console.log(`🔄 Restarting stream in 3 seconds (attempt ${restartAttempts})...`);
             setTimeout(() => startStreaming(), 3000);
         });
 
@@ -263,7 +285,7 @@ process.on('SIGTERM', async () => {
 // Start server
 app.listen(PORT, '0.0.0.0', async () => {
     console.log('🚀 Ultra-Lightweight Audio Streaming Service v4.0 running on port', PORT);
-    console.log('🎯 ZERO LAG MODE - MP3 audio + static image streaming');
+    console.log('🎯 ZERO LAG MODE - Reliable MP3 audio + static image streaming');
     console.log('🌐 Server binding to 0.0.0.0:' + PORT);
     
     console.log('Environment check:');
@@ -271,11 +293,11 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log(`- STREAM_KEY: ${process.env.STREAM_KEY ? '✅ Set' : '❌ Missing'}`);
     console.log(`- AUDIO_URL: ${process.env.AUDIO_URL ? '✅ Set' : '❌ Missing'}`);
     console.log(`- CONTROL_KEY: ${process.env.CONTROL_KEY ? '✅ Set' : '❌ Missing'}`);
-    console.log('- ARCHITECTURE: High-quality static image + premium MP3 audio');
-    console.log('- QUALITY: Premium audio, smooth HD image streaming');
-    console.log('- RESOLUTION: 1280x720 @ 30fps (smooth streaming)');
-    console.log('- AUDIO: 192k stereo premium (audiobook optimized)');
-    console.log('- BITRATE: 500k video + 192k audio = 692k total');
+    console.log('- ARCHITECTURE: Static image + MP3 audio streaming');
+    console.log('- QUALITY: High quality audio, HD static image');
+    console.log('- RESOLUTION: 1280x720 @ 2fps (static image)');
+    console.log('- AUDIO: 128k stereo (audiobook optimized)');
+    console.log('- BITRATE: ~200k total (optimized for reliability)');
 
     // Auto-start streaming if environment variables are available
     if (process.env.RTMP_URL && process.env.STREAM_KEY && process.env.AUDIO_URL) {
