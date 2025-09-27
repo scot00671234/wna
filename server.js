@@ -53,35 +53,41 @@ async function startStreaming() {
             '-loop', '1',
             '-i', coverImagePath,
             
-            // INPUT 2: MP3 audio from Dropbox (with seamless looping)
+            // INPUT 2: MP3 audio from Dropbox (enhanced stability)
             '-re', // Real-time streaming
             '-stream_loop', '-1', // Infinite loop for seamless playback
             '-reconnect', '1',
             '-reconnect_streamed', '1',
-            '-reconnect_delay_max', '10',
+            '-reconnect_delay_max', '5', // Faster reconnect
+            '-reconnect_on_network_error', '1',
+            '-reconnect_on_http_error', '1', 
+            '-timeout', '10000000', // 10 second timeout
+            '-user_agent', 'FFmpeg Audio Stream',
             '-i', audioUrl,
             
-            // VIDEO: Ultra-efficient static image encoding
+            // VIDEO: HIGH-QUALITY static image encoding (local file = no bandwidth limits)
             '-c:v', 'libx264',
-            '-preset', 'ultrafast', // Fastest possible encoding
+            '-preset', 'medium', // Better quality since it's local
             '-tune', 'stillimage', // Optimized for static images
-            '-crf', '35', // Good quality for static image
-            '-maxrate', '50k', // Very low bitrate since image doesn't change
-            '-bufsize', '100k',
-            '-s', '1280x720', // Better quality since it's just a static image
-            '-r', '1', // Ultra low framerate (1 fps) - image doesn't change
+            '-crf', '18', // Very high quality for local static image
+            '-maxrate', '500k', // Higher bitrate for smooth playback
+            '-bufsize', '1000k', // Larger buffer for stability
+            '-s', '1280x720', // HD quality
+            '-r', '30', // Smooth 30fps for zero lag viewer experience
             '-pix_fmt', 'yuv420p',
             
-            // ZERO-LAG KEYFRAME SETTINGS - Frequent keyframes for instant viewer join
-            '-g', '1', // GOP size: keyframe every second for zero lag
-            '-keyint_min', '1', // Minimum keyframe interval
+            // OPTIMIZED KEYFRAME SETTINGS for smooth streaming
+            '-g', '90', // GOP size: keyframe every 3 seconds (90 frames at 30fps)
+            '-keyint_min', '30', // Minimum keyframe interval  
             '-sc_threshold', '0', // Disable scene change detection
+            '-force_key_frames', 'expr:gte(t,n_forced*2)', // Force keyframe every 2 seconds
             
-            // AUDIO: High quality since this is the main content
+            // AUDIO: Premium quality for audiobook content
             '-c:a', 'aac',
-            '-b:a', '128k', // Good audio quality for audiobook
-            '-ar', '44100', // Standard sample rate
+            '-b:a', '192k', // Premium audio quality for audiobook
+            '-ar', '48000', // High sample rate for best quality
             '-ac', '2', // Stereo audio
+            '-profile:a', 'aac_low', // AAC-LC profile for compatibility
             
             // Map streams: video from image, audio from MP3
             '-map', '0:v:0', // Video from input 0 (image)
@@ -90,9 +96,12 @@ async function startStreaming() {
             // Ensure continuous streaming (no auto-exit)
             // Removed -shortest to maintain 24/7 continuous streaming
             
-            // DIRECT RTMP OUTPUT
+            // OPTIMIZED RTMP OUTPUT for stability
             '-f', 'flv',
             '-flvflags', 'no_duration_filesize',
+            '-rtmp_live', 'live',
+            '-rtmp_buffer_size', '512k',
+            '-rtmp_flush_interval', '1',
             fullRtmpUrl
         ];
 
@@ -262,11 +271,11 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log(`- STREAM_KEY: ${process.env.STREAM_KEY ? '✅ Set' : '❌ Missing'}`);
     console.log(`- AUDIO_URL: ${process.env.AUDIO_URL ? '✅ Set' : '❌ Missing'}`);
     console.log(`- CONTROL_KEY: ${process.env.CONTROL_KEY ? '✅ Set' : '❌ Missing'}`);
-    console.log('- ARCHITECTURE: Static image + MP3 audio streaming');
-    console.log('- QUALITY: High quality audio, static HD image');
-    console.log('- RESOLUTION: 1280x720 @ 1fps (static image)');
-    console.log('- AUDIO: 128k stereo (optimized for audiobook)');
-    console.log('- BITRATE: 50k video + 128k audio = 178k total');
+    console.log('- ARCHITECTURE: High-quality static image + premium MP3 audio');
+    console.log('- QUALITY: Premium audio, smooth HD image streaming');
+    console.log('- RESOLUTION: 1280x720 @ 30fps (smooth streaming)');
+    console.log('- AUDIO: 192k stereo premium (audiobook optimized)');
+    console.log('- BITRATE: 500k video + 192k audio = 692k total');
 
     // Auto-start streaming if environment variables are available
     if (process.env.RTMP_URL && process.env.STREAM_KEY && process.env.AUDIO_URL) {
