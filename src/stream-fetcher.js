@@ -7,9 +7,9 @@ class StreamFetcher {
     constructor(videoUrl, cacheDir, options = {}) {
         this.videoUrl = videoUrl;
         this.cacheDir = cacheDir;
-        this.segmentDuration = options.segmentDuration || 1; // 1 second segments for lower latency
-        this.lookaheadSeconds = options.lookaheadSeconds || 30; // 30 seconds ahead (reduced for efficiency)
-        this.maxCacheSize = options.maxCacheSize || 150; // 150 seconds total cache (reduced for RAM usage)
+        this.segmentDuration = options.segmentDuration || 0.5; // 0.5 second segments for ultra-low latency
+        this.lookaheadSeconds = options.lookaheadSeconds || 10; // 10 seconds ahead (minimal for efficiency)
+        this.maxCacheSize = options.maxCacheSize || 30; // 30 seconds total cache (minimal RAM usage)
         
         this.currentSegment = 0;
         this.segments = new Map(); // segmentId -> { file, timestamp, duration, ready }
@@ -55,7 +55,7 @@ class StreamFetcher {
                     this.segments.set(parseInt(segId), { ...segData, file: segmentFile });
                 } catch {
                     // Segment file doesn't exist anymore
-                    console.log(`🗑️  Removing stale segment ${segId} from cache`);
+                    // Silent cleanup - no logging
                 }
             }
             
@@ -131,23 +131,26 @@ class StreamFetcher {
         
         const ffmpegArgs = [
             '-hide_banner',
-            '-loglevel', 'info',
+            '-loglevel', 'warning',
             ...hwAccelArgs,
             '-reconnect', '1',
             '-reconnect_streamed', '1', 
             '-reconnect_delay_max', '30',
             '-i', this.videoUrl,
-            // Optimized for audiobooks - lower CPU usage, better efficiency
+            // ULTRA-OPTIMIZED for audiobooks - minimal CPU/bandwidth usage
             '-c:v', 'libx264',
-            '-preset', 'superfast', // Faster than ultrafast but better quality
-            '-tune', 'stillimage', // Optimized for static/minimal video content
-            '-crf', '28', // Higher CRF for audiobooks (less important video quality)
-            '-maxrate', '500k', // Lower bitrate for audiobooks
-            '-bufsize', '1000k',
+            '-preset', 'ultrafast', // Fastest encoding
+            '-tune', 'stillimage', // Optimized for static content
+            '-crf', '35', // Very high CRF for minimal video data
+            '-maxrate', '200k', // Ultra-low bitrate for audiobooks
+            '-bufsize', '400k',
+            '-s', '320x240', // Tiny resolution for audiobooks
+            '-r', '5', // Ultra-low framerate
             '-c:a', 'aac',
-            '-b:a', '64k', // Lower audio bitrate sufficient for speech
-            '-ar', '22050', // Lower sample rate for speech
-            '-g', `${this.segmentDuration * 10}`, // GOP size optimized for 1s segments
+            '-b:a', '32k', // Minimal audio bitrate for speech
+            '-ar', '16000', // Lower sample rate for speech
+            '-ac', '1', // Mono audio
+            '-g', `${Math.ceil(this.segmentDuration * 5)}`, // GOP size optimized
             '-force_key_frames', `expr:gte(t,n_forced*${this.segmentDuration})`,
             '-f', 'hls',
             '-hls_time', this.segmentDuration.toString(),
@@ -169,11 +172,9 @@ class StreamFetcher {
             const output = data.toString();
             lastOutput = output;
             
-            // Smart logging: Show segment creation and errors, filter out fps spam
-            if (output.includes('Opening') || output.includes('segment_') || 
-                output.includes('error') || output.includes('failed') || output.includes('warning') ||
-                (output.includes('fps=') && !hasStarted)) {
-                console.log(`📹 FFmpeg: ${output.trim()}`);
+            // PRODUCTION: Minimal logging - only errors to reduce I/O overhead
+            if (output.includes('error') || output.includes('failed')) {
+                console.log(`📹 FFmpeg ERROR: ${output.trim()}`);
             }
             
             // Multiple ways to detect segment creation
@@ -225,16 +226,39 @@ class StreamFetcher {
             this.lastError = error.message;
         });
         
-        // Skip filesystem monitoring - FFmpeg output is sufficient
-        // this.startFileSystemMonitoring();
+        // Re-enable filesystem monitoring since we disabled FFmpeg logging
+        this.startFileSystemMonitoring();
     }
 
     startFileSystemMonitoring() {
-        // DISABLED: Filesystem monitoring removed for performance optimization
-        // FFmpeg output parsing is sufficient for segment detection
-        // This eliminates duplicate segment registration and reduces I/O overhead
-        console.log('📈 Filesystem monitoring disabled for optimized performance');
-        return;
+        // Ultra-efficient filesystem monitoring for production
+        if (this.fileWatcher) return;
+        
+        // Check for new segments every 1 second (faster detection)
+        this.fileWatcher = setInterval(async () => {
+            if (!this.isRunning) {
+                clearInterval(this.fileWatcher);
+                this.fileWatcher = null;
+                return;
+            }
+            
+            try {
+                const files = await fs.readdir(this.cacheDir);
+                const segmentFiles = files.filter(f => f.startsWith('segment_') && f.endsWith('.ts'));
+                
+                for (const file of segmentFiles) {
+                    const match = file.match(/segment_(\d+)\.ts/);
+                    if (match) {
+                        const segmentId = parseInt(match[1]);
+                        if (!this.segments.has(segmentId)) {
+                            await this.registerSegment(segmentId);
+                        }
+                    }
+                }
+            } catch (error) {
+                // Silent error handling
+            }
+        }, 1000);
     }
 
     async registerSegment(segmentId) {
@@ -249,10 +273,8 @@ class StreamFetcher {
                 ready: true
             });
             
-            // Reduce logging frequency - only log every 100th segment
-            if (segmentId % 100 === 0) {
-                console.log(`✅ Segment ${segmentId} ready (${(stats.size / 1024).toFixed(1)}KB)`);
-            }
+            // PRODUCTION: No segment logging - reduces I/O dramatically
+            // Segment ready tracking happens silently
             
             // Clean up old segments
             await this.cleanupOldSegments();
@@ -279,7 +301,7 @@ class StreamFetcher {
             for (const segmentId of toRemove) {
                 // Only remove from tracking, let ffmpeg handle file deletion
                 this.segments.delete(segmentId);
-                console.log(`📋 Removed segment ${segmentId} from tracking (file handled by HLS muxer)`);
+                // Silent removal - no logging
             }
         }
     }

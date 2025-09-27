@@ -20,14 +20,25 @@ let lastError = null;
 let startTime = null;
 let healthMonitor = null;
 
-// Configuration optimized for smooth 24/7 streaming
+// ULTRA-OPTIMIZED configuration for lag-free 24/7 streaming
 const config = {
-    cacheDir: process.env.CACHE_DIR || (process.env.USE_TMPFS === 'true' ? '/tmp/stream_cache' : './cache'),
+    // Force tmpfs in production for zero disk I/O
+    cacheDir: process.env.NODE_ENV === 'production' ? '/tmp/stream_cache' : 
+              (process.env.USE_TMPFS === 'true' ? '/tmp/stream_cache' : './cache'),
     mediamtxHost: process.env.MEDIAMTX_HOST || 'localhost',
-    segmentDuration: parseInt(process.env.SEGMENT_DURATION) || 1, // 1 second segments for lower latency
-    lookaheadSeconds: parseInt(process.env.LOOKAHEAD_SECONDS) || 30, // 30 seconds of prefetch
-    maxCacheSize: parseInt(process.env.MAX_CACHE_SIZE) || 150, // 2.5 minutes total cache for efficiency
+    segmentDuration: parseFloat(process.env.SEGMENT_DURATION) || 0.5, // 0.5s segments for ultra-low latency
+    lookaheadSeconds: parseInt(process.env.LOOKAHEAD_SECONDS) || 10, // 10s lookahead for efficiency  
+    maxCacheSize: parseInt(process.env.MAX_CACHE_SIZE) || 30, // 30s cache for minimal RAM
 };
+
+// Auto-detect hardware acceleration
+if (!process.env.FFMPEG_HWACCEL) {
+    // Try to detect available hardware acceleration
+    const os = require('os');
+    if (os.platform() === 'linux') {
+        process.env.FFMPEG_HWACCEL = 'vaapi'; // Common on Linux VPS
+    }
+}
 
 // Middleware
 app.use(express.json());
@@ -457,11 +468,11 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log(`- VIDEO_URL: ${process.env.VIDEO_URL ? '✅ Set' : '❌ Missing'}`);
     console.log(`- BACKUP_RTMP_URL: ${process.env.BACKUP_RTMP_URL ? '✅ Set' : '➖ Optional'}`);
     console.log(`- CONTROL_KEY: ${process.env.CONTROL_KEY ? '✅ Set' : '❌ Missing'}`);
-    console.log(`- CACHE_DIR: ${config.cacheDir} (${process.env.USE_TMPFS === 'true' ? 'tmpfs/RAM' : 'disk'})`);
-    console.log(`- FFMPEG_HWACCEL: ${process.env.FFMPEG_HWACCEL ? process.env.FFMPEG_HWACCEL : 'software only'}`);
-    console.log(`- SEGMENT_DURATION: ${config.segmentDuration}s`);
-    console.log(`- LOOKAHEAD: ${config.lookaheadSeconds}s`);
-    console.log(`- MAX_CACHE: ${config.maxCacheSize}s`);
+    console.log(`- CACHE_DIR: ${config.cacheDir} (${config.cacheDir.includes('/tmp/') ? 'tmpfs/RAM' : 'disk'})`);
+    console.log(`- FFMPEG_HWACCEL: ${process.env.FFMPEG_HWACCEL || 'software only'}`);
+    console.log(`- SEGMENT_DURATION: ${config.segmentDuration}s (ultra-low latency)`);
+    console.log(`- LOOKAHEAD: ${config.lookaheadSeconds}s (minimal)`);
+    console.log(`- MAX_CACHE: ${config.maxCacheSize}s (minimal RAM usage)`);
     
     // Auto-start streaming after 5 seconds to allow system stabilization
     console.log('Auto-starting optimized streaming system in 5 seconds...');

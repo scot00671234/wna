@@ -92,19 +92,22 @@ class StreamPublisher {
             // Primary endpoint - full quality
             ffmpegArgs = [
                 '-hide_banner',
-                '-loglevel', 'info',
+                '-loglevel', 'warning',
                 '-re', // Read at native framerate for real-time streaming
                 '-f', 'hls',
                 '-live_start_index', '-3', // Follow live edge
                 '-i', inputPath, // HLS playlist file
                 '-c:v', 'libx264',
                 '-preset', 'veryfast', 
-                '-crf', '28', // Higher CRF for audiobooks
-                '-maxrate', '800k', // Lower bitrate for audiobooks
-                '-bufsize', '1600k',
+                '-crf', '35', // Ultra-high CRF for minimal data
+                '-maxrate', '200k', // Ultra-low bitrate
+                '-bufsize', '400k',
+                '-s', '320x240', // Tiny resolution
+                '-r', '5', // Ultra-low framerate
                 '-c:a', 'aac',
-                '-b:a', '64k', // Lower audio bitrate for speech
-                '-ar', '22050', // Optimize sample rate for speech
+                '-b:a', '32k', // Minimal audio for speech
+                '-ar', '16000', // Lower sample rate
+                '-ac', '1', // Mono audio
                 '-f', 'flv',
                 '-flvflags', 'no_duration_filesize',
                 '-rtmp_live', 'live',
@@ -115,20 +118,22 @@ class StreamPublisher {
             // Backup endpoint - lower quality for reliability
             ffmpegArgs = [
                 '-hide_banner',
-                '-loglevel', 'info',
+                '-loglevel', 'warning',
                 '-re',
                 '-f', 'hls',
                 '-live_start_index', '-3',
                 '-i', inputPath,
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
-                '-crf', '30', // Even higher CRF for backup quality
-                '-maxrate', '400k', // Much lower bitrate for backup
-                '-bufsize', '800k',
-                '-s', '640x360', // Lower resolution
+                '-crf', '38', // Maximum CRF for backup
+                '-maxrate', '128k', // Absolute minimum bitrate
+                '-bufsize', '256k',
+                '-s', '240x180', // Minimal resolution
+                '-r', '3', // Minimal framerate
                 '-c:a', 'aac',
-                '-b:a', '48k', // Lower audio bitrate for backup
-                '-ar', '22050',
+                '-b:a', '24k', // Minimal audio for backup
+                '-ar', '16000',
+                '-ac', '1', // Mono
                 '-f', 'flv', 
                 '-flvflags', 'no_duration_filesize',
                 '-rtmp_live', 'live',
@@ -149,10 +154,11 @@ class StreamPublisher {
         publisherProcess.stderr.on('data', (data) => {
             const output = data.toString();
             
-            // Smart logging: Show connection status, errors, but limit fps spam
-            if (output.includes('error') || output.includes('failed') || output.includes('Connection refused') ||
-                (output.includes('fps=') && !isConnected)) {
+            // PRODUCTION: Only log errors and initial connection
+            if (output.includes('error') || output.includes('failed') || output.includes('Connection refused')) {
                 console.log(`📺 ${endpoint.name}: ${output.trim()}`);
+            } else if (output.includes('fps=') && !isConnected) {
+                console.log(`✅ ${endpoint.name}: Connected`);
             }
             
             if (output.includes('fps=') && !isConnected) {
