@@ -2,12 +2,13 @@
 
 ## Overview
 
-This is a 24/7 streaming service that streams video content from Dropbox to LiveKit using RTMP protocol. The service is built as a Node.js web application that manages FFmpeg processes to handle the video streaming pipeline. It provides REST API endpoints to control streaming operations and monitor stream status.
+This is a ultra-simplified 24/7 streaming service that streams video content directly from Dropbox to RTMP with maximum efficiency. Built as a single-process Node.js application with one direct FFmpeg stream - no HLS segmentation, no complex architecture, just pure efficiency focused on zero lag performance.
 
-**Status**: ✅ Complete and fully functional - All FFmpeg errors resolved, ready for streaming configuration
+**Status**: ✅ Ultra-Simple & Mega-Efficient - Direct streaming with zero HLS complexity, optimized for maximum performance
 
 ## Recent Changes
 
+- **2025-09-27**: **COMPLETE SIMPLIFICATION**: Eliminated all HLS segmentation complexity, removed multi-process architecture, implemented direct Dropbox→RTMP streaming with mega-efficient settings (160x120@3fps, 104k bitrate)
 - **2025-09-27**: **HARDWARE ACCELERATION ERRORS FIXED**: Resolved FFmpeg VAAPI crashes by disabling problematic hardware acceleration detection
 - **2025-09-27**: **REPLIT IMPORT COMPLETE**: Successfully imported GitHub project and configured for Replit environment
 - **2025-09-27**: ✅ FFmpeg system dependency installed and verified (v7.1.1)
@@ -38,34 +39,34 @@ Project requirement: Lightweight GitHub-compatible codebase (no large video file
 
 ## System Architecture
 
-### Backend Architecture
-- **Framework**: Express.js web server providing REST API endpoints
-- **Process Management**: Child process spawning to manage FFmpeg streaming instances
-- **Video Processing**: FFmpeg for video transcoding and RTMP streaming
+### Ultra-Simple Architecture
+- **Framework**: Express.js web server with minimal REST API endpoints
+- **Process Management**: Single FFmpeg process with direct Dropbox to RTMP streaming
+- **Video Processing**: Ultra-efficient FFmpeg settings optimized for maximum performance
 - **Configuration**: Environment variable-based secure configuration
 
 ### Core Components
-- **Stream Controller**: Manages FFmpeg process lifecycle (start/stop/monitor)
-- **URL Converter**: Transforms Dropbox share URLs to direct download URLs (dl=0 → dl=1)
-- **Status Monitor**: Tracks streaming state, uptime, and error conditions
-- **API Layer**: REST endpoints for stream control and status reporting
-- **Auto-restart Logic**: Automatically restarts streaming on FFmpeg failures
+- **Direct Stream**: One FFmpeg process handling entire Dropbox→RTMP pipeline
+- **URL Converter**: Transforms Dropbox share URLs to direct download URLs (dl=0 → dl=1)  
+- **Simple Monitor**: Basic streaming state tracking
+- **Minimal API**: Essential endpoints only (start/stop/health)
+- **Auto-restart Logic**: Automatic looping and restart on failures
 
 ### Design Patterns
-- **Single Process Model**: One active FFmpeg stream process at a time
-- **Stateful Service**: Maintains stream status, error states, and timing information
-- **Environment-driven Configuration**: All sensitive data and URLs configured via secure environment variables
-- **Process Monitoring**: Real-time tracking of stream health and automatic error handling
-- **Graceful Error Handling**: Proper validation prevents crashes on missing configuration
+- **Maximum Simplicity**: One direct FFmpeg process, no intermediate steps
+- **Efficiency First**: All settings optimized for performance over quality
+- **Zero Lag Focus**: Minimal buffering, ultra-low quality settings, frequent keyframes
+- **Auto-Recovery**: Automatic restart and looping for 24/7 operation
+- **Resource Minimal**: Tiny resolution (160x120), low framerate (3fps), ultra-low bitrate (104k total)
 
-### Video Streaming Pipeline
+### Ultra-Efficient Streaming Pipeline
 1. Environment variable validation (RTMP_URL, STREAM_KEY, VIDEO_URL)
-2. Dropbox URL conversion from share links to direct download URLs
-3. FFmpeg process spawning with production-grade codec configuration (libx264/aac)
-4. Continuous streaming with enhanced network resilience and RTMP-specific timeouts
-5. Progressive backoff restart strategy with exponential delay increases
-6. Comprehensive error detection, diagnostics, and status reporting
-7. Exit code analysis and specific troubleshooting suggestions
+2. Dropbox URL conversion from share links to direct download URLs  
+3. Single FFmpeg process: Direct HTTP input → RTMP output (no HLS, no segmentation)
+4. Ultra-efficient encoding: 160x120@3fps, CRF 40, 80k video + 24k audio
+5. Zero-lag keyframes: Every 2 seconds for immediate viewer join
+6. Automatic looping via reconnect_at_eof for continuous 24/7 streaming
+7. Simple restart logic with minimal delay
 
 ### API Endpoints
 - `GET /` - Service information and available endpoints
