@@ -7,9 +7,9 @@ class StreamFetcher {
     constructor(videoUrl, cacheDir, options = {}) {
         this.videoUrl = videoUrl;
         this.cacheDir = cacheDir;
-        this.segmentDuration = options.segmentDuration || 2; // 2 second segments
-        this.lookaheadSeconds = options.lookaheadSeconds || 60; // 60 seconds ahead
-        this.maxCacheSize = options.maxCacheSize || 300; // 300 seconds total cache
+        this.segmentDuration = options.segmentDuration || 1; // 1 second segments for lower latency
+        this.lookaheadSeconds = options.lookaheadSeconds || 30; // 30 seconds ahead (reduced for efficiency)
+        this.maxCacheSize = options.maxCacheSize || 150; // 150 seconds total cache (reduced for RAM usage)
         
         this.currentSegment = 0;
         this.segments = new Map(); // segmentId -> { file, timestamp, duration, ready }
@@ -126,23 +126,33 @@ class StreamFetcher {
         
         // Fixed HLS-based pipeline for true continuity (no -re for faster prefetch)
         const hlsPlaylist = path.join(this.cacheDir, 'stream.m3u8');
+        // Hardware acceleration detection
+        const hwAccelArgs = process.env.FFMPEG_HWACCEL ? ['-hwaccel', process.env.FFMPEG_HWACCEL] : [];
+        
         const ffmpegArgs = [
             '-hide_banner',
-            '-loglevel', 'info', // Changed from 'warning' to get more output
+            '-loglevel', 'warning',
+            ...hwAccelArgs,
             '-reconnect', '1',
             '-reconnect_streamed', '1', 
             '-reconnect_delay_max', '30',
             '-i', this.videoUrl,
+            // Optimized for audiobooks - lower CPU usage, better efficiency
             '-c:v', 'libx264',
-            '-preset', 'ultrafast',
+            '-preset', 'superfast', // Faster than ultrafast but better quality
+            '-tune', 'stillimage', // Optimized for static/minimal video content
+            '-crf', '28', // Higher CRF for audiobooks (less important video quality)
+            '-maxrate', '500k', // Lower bitrate for audiobooks
+            '-bufsize', '1000k',
             '-c:a', 'aac',
-            '-b:a', '128k',
-            '-g', `${this.segmentDuration * 15}`, // GOP size for 15fps
+            '-b:a', '64k', // Lower audio bitrate sufficient for speech
+            '-ar', '22050', // Lower sample rate for speech
+            '-g', `${this.segmentDuration * 10}`, // GOP size optimized for 1s segments
             '-force_key_frames', `expr:gte(t,n_forced*${this.segmentDuration})`,
             '-f', 'hls',
             '-hls_time', this.segmentDuration.toString(),
             '-hls_flags', 'delete_segments+append_list+omit_endlist+independent_segments',
-            '-hls_list_size', Math.ceil(this.maxCacheSize / this.segmentDuration), // Finite window matching cache
+            '-hls_list_size', Math.ceil(this.maxCacheSize / this.segmentDuration),
             '-hls_segment_type', 'mpegts',
             '-hls_segment_filename', path.join(this.cacheDir, 'segment_%d.ts'),
             hlsPlaylist
@@ -159,8 +169,10 @@ class StreamFetcher {
             const output = data.toString();
             lastOutput = output;
             
-            // Log all FFmpeg output for debugging
-            console.log(`📹 FFmpeg: ${output.trim()}`);
+            // Only log important FFmpeg output to reduce I/O overhead
+            if (output.includes('error') || output.includes('failed') || output.includes('warning')) {
+                console.log(`📹 FFmpeg: ${output.trim()}`);
+            }
             
             // Multiple ways to detect segment creation
             if (output.includes('Opening') && output.includes('segment_')) {
@@ -211,8 +223,8 @@ class StreamFetcher {
             this.lastError = error.message;
         });
         
-        // Monitor segment creation via filesystem watching
-        this.startFileSystemMonitoring();
+        // Skip filesystem monitoring - FFmpeg output is sufficient
+        // this.startFileSystemMonitoring();
     }
 
     startFileSystemMonitoring() {
@@ -262,13 +274,16 @@ class StreamFetcher {
                 ready: true
             });
             
-            console.log(`✅ Segment ${segmentId} ready (${(stats.size / 1024).toFixed(1)}KB)`);
+            // Reduce logging frequency - only log every 100th segment
+            if (segmentId % 100 === 0) {
+                console.log(`✅ Segment ${segmentId} ready (${(stats.size / 1024).toFixed(1)}KB)`);
+            }
             
             // Clean up old segments
             await this.cleanupOldSegments();
             
-            // Save checkpoint periodically
-            if (segmentId % 10 === 0) {
+            // Save checkpoint less frequently to reduce I/O
+            if (segmentId % 100 === 0) {
                 await this.saveCheckpoint();
             }
             

@@ -92,18 +92,19 @@ class StreamPublisher {
             // Primary endpoint - full quality
             ffmpegArgs = [
                 '-hide_banner',
-                '-loglevel', 'info',
+                '-loglevel', 'warning',
                 '-re', // Read at native framerate for real-time streaming
                 '-f', 'hls',
                 '-live_start_index', '-3', // Follow live edge
                 '-i', inputPath, // HLS playlist file
                 '-c:v', 'libx264',
                 '-preset', 'veryfast', 
-                '-crf', '23',
-                '-maxrate', '2M',
-                '-bufsize', '4M',
+                '-crf', '28', // Higher CRF for audiobooks
+                '-maxrate', '800k', // Lower bitrate for audiobooks
+                '-bufsize', '1600k',
                 '-c:a', 'aac',
-                '-b:a', '128k',
+                '-b:a', '64k', // Lower audio bitrate for speech
+                '-ar', '22050', // Optimize sample rate for speech
                 '-f', 'flv',
                 '-flvflags', 'no_duration_filesize',
                 '-rtmp_live', 'live',
@@ -114,19 +115,20 @@ class StreamPublisher {
             // Backup endpoint - lower quality for reliability
             ffmpegArgs = [
                 '-hide_banner',
-                '-loglevel', 'info',
+                '-loglevel', 'warning',
                 '-re',
                 '-f', 'hls',
                 '-live_start_index', '-3',
                 '-i', inputPath,
                 '-c:v', 'libx264',
                 '-preset', 'ultrafast',
-                '-crf', '28',
-                '-maxrate', '1M',
-                '-bufsize', '2M',
+                '-crf', '30', // Even higher CRF for backup quality
+                '-maxrate', '400k', // Much lower bitrate for backup
+                '-bufsize', '800k',
                 '-s', '640x360', // Lower resolution
                 '-c:a', 'aac',
-                '-b:a', '96k',
+                '-b:a', '48k', // Lower audio bitrate for backup
+                '-ar', '22050',
                 '-f', 'flv', 
                 '-flvflags', 'no_duration_filesize',
                 '-rtmp_live', 'live',
@@ -147,8 +149,11 @@ class StreamPublisher {
         publisherProcess.stderr.on('data', (data) => {
             const output = data.toString();
             
-            // Log FFmpeg output for debugging
-            console.log(`📺 ${endpoint.name}: ${output.trim()}`);
+            // Only log errors and connection status to reduce I/O
+            if (output.includes('error') || output.includes('failed') || 
+                (output.includes('fps=') && !isConnected) || output.includes('Connection refused')) {
+                console.log(`📺 ${endpoint.name}: ${output.trim()}`);
+            }
             
             if (output.includes('fps=') && !isConnected) {
                 isConnected = true;
