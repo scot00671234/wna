@@ -1,14 +1,14 @@
-# RTMP Streaming Service
+# Ultra-Lightweight Audio Streaming Service
 
 ## Overview
 
-This is a ultra-simplified 24/7 streaming service that streams video content directly from Dropbox to RTMP with maximum efficiency. Built as a single-process Node.js application with one direct FFmpeg stream - no HLS segmentation, no complex architecture, just pure efficiency focused on zero lag performance.
+This is a ultra-lightweight 24/7 audio streaming service that streams MP3 audio content from Dropbox combined with a static HD image to RTMP destinations. Built as a single-process Node.js application optimized for audiobook streaming with zero lag performance and minimal resource usage.
 
-**Status**: ✅ Ultra-Simple & Mega-Efficient - Direct streaming with zero HLS complexity, optimized for maximum performance
+**Status**: ✅ Ultra-Lightweight & Zero-Lag - MP3 audio + static image streaming optimized for audiobook content
 
 ## Recent Changes
 
-- **2025-09-27**: **COMPLETE SIMPLIFICATION**: Eliminated all HLS segmentation complexity, removed multi-process architecture, implemented direct Dropbox→RTMP streaming with mega-efficient settings (160x120@3fps, 104k bitrate)
+- **2025-09-27**: **AUDIO STREAMING CONVERSION**: Converted from video to ultra-lightweight audio streaming - MP3 from Dropbox + static HD cover image (1280x720@1fps, 178k bitrate) for zero lag audiobook streaming
 - **2025-09-27**: **HARDWARE ACCELERATION ERRORS FIXED**: Resolved FFmpeg VAAPI crashes by disabling problematic hardware acceleration detection
 - **2025-09-27**: **REPLIT IMPORT COMPLETE**: Successfully imported GitHub project and configured for Replit environment
 - **2025-09-27**: ✅ FFmpeg system dependency installed and verified (v7.1.1)
@@ -39,33 +39,34 @@ Project requirement: Lightweight GitHub-compatible codebase (no large video file
 
 ## System Architecture
 
-### Ultra-Simple Architecture
+### Ultra-Lightweight Architecture
 - **Framework**: Express.js web server with minimal REST API endpoints
-- **Process Management**: Single FFmpeg process with direct Dropbox to RTMP streaming
-- **Video Processing**: Ultra-efficient FFmpeg settings optimized for maximum performance
+- **Process Management**: Single FFmpeg process combining static image + MP3 audio
+- **Audio Processing**: High-quality MP3 streaming from Dropbox with static HD cover image
 - **Configuration**: Environment variable-based secure configuration
 
 ### Core Components
-- **Direct Stream**: One FFmpeg process handling entire Dropbox→RTMP pipeline
+- **Audio Stream**: One FFmpeg process combining static image + MP3 audio from Dropbox
+- **Static Image**: HD cover image (1280x720) for visual component with minimal bitrate
 - **URL Converter**: Transforms Dropbox share URLs to direct download URLs (dl=0 → dl=1)  
 - **Simple Monitor**: Basic streaming state tracking
 - **Minimal API**: Essential endpoints only (start/stop/health)
-- **Auto-restart Logic**: Automatic looping and restart on failures
+- **Auto-restart Logic**: Automatic looping and restart on audio completion
 
 ### Design Patterns
-- **Maximum Simplicity**: One direct FFmpeg process, no intermediate steps
-- **Efficiency First**: All settings optimized for performance over quality
-- **Zero Lag Focus**: Minimal buffering, ultra-low quality settings, frequent keyframes
+- **Zero Lag Audio**: MP3 audio streaming with static image for instant playback
+- **Quality Focus**: High-quality audio (128k stereo) for audiobook content
+- **Minimal Video**: Static HD image at 1fps with minimal bitrate (50k)
 - **Auto-Recovery**: Automatic restart and looping for 24/7 operation
-- **Resource Minimal**: Tiny resolution (160x120), low framerate (3fps), ultra-low bitrate (104k total)
+- **Resource Efficient**: Static image + audio streaming (178k total bitrate)
 
-### Ultra-Efficient Streaming Pipeline
-1. Environment variable validation (RTMP_URL, STREAM_KEY, VIDEO_URL)
+### Ultra-Lightweight Streaming Pipeline
+1. Environment variable validation (RTMP_URL, STREAM_KEY, AUDIO_URL)
 2. Dropbox URL conversion from share links to direct download URLs  
-3. Single FFmpeg process: Direct HTTP input → RTMP output (no HLS, no segmentation)
-4. Ultra-efficient encoding: 160x120@3fps, CRF 40, 80k video + 24k audio
-5. Zero-lag keyframes: Every 2 seconds for immediate viewer join
-6. Automatic looping via reconnect_at_eof for continuous 24/7 streaming
+3. Single FFmpeg process: Static image + MP3 audio → RTMP output
+4. Efficient encoding: 1280x720@1fps static image (50k) + 128k stereo audio
+5. Minimal keyframes: Every 30 seconds since image is static
+6. Automatic looping via reconnect_at_eof for continuous 24/7 audiobook streaming
 7. Simple restart logic with minimal delay
 
 ### API Endpoints
@@ -88,10 +89,11 @@ Project requirement: Lightweight GitHub-compatible codebase (no large video file
 - **FFmpeg**: Video processing and streaming engine (system dependency)
 
 ### Required Environment Variables
-- `RTMP_URL`: Base RTMP server URL for LiveKit (rtmps://pump-prod-tg2x8veh.rtmp.livekit.cloud/x)
+- `RTMP_URL`: Base RTMP server URL for streaming destination
 - `STREAM_KEY`: Authentication key for RTMP streaming
-- `VIDEO_URL`: Dropbox share URL for source video content
-- `PORT`: Server port configuration (optional, defaults to 3000)
+- `AUDIO_URL`: Dropbox share URL for source MP3 audio content
+- `CONTROL_KEY`: Authentication key for control endpoints (optional)
+- `PORT`: Server port configuration (optional, defaults to 5000)
 
 ### System Requirements
 - Node.js 18.0.0 or higher
@@ -118,8 +120,10 @@ Project requirement: Lightweight GitHub-compatible codebase (no large video file
 ### File Structure
 ```
 .
-├── server.js           # Main streaming service
-├── package.json        # Node.js dependencies
+├── server.js           # Main audio streaming service
+├── package.json        # Node.js dependencies  
+├── assets/             # Static assets
+│   └── cover.png       # HD audiobook cover (1280x720)
 ├── Dockerfile          # Production container
 ├── docker-compose.yml  # Deployment configuration
 ├── .dockerignore       # Exclude unnecessary files

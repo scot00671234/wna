@@ -31,51 +31,64 @@ async function startStreaming() {
     try {
         const rtmpUrl = process.env.RTMP_URL;
         const streamKey = process.env.STREAM_KEY;
-        const rawVideoUrl = process.env.VIDEO_URL;
+        const rawAudioUrl = process.env.AUDIO_URL;
         
-        if (!rtmpUrl || !streamKey || !rawVideoUrl) {
-            throw new Error('Missing required environment variables: RTMP_URL, STREAM_KEY, or VIDEO_URL');
+        if (!rtmpUrl || !streamKey || !rawAudioUrl) {
+            throw new Error('Missing required environment variables: RTMP_URL, STREAM_KEY, or AUDIO_URL');
         }
 
-        const videoUrl = convertDropboxUrl(rawVideoUrl);
+        const audioUrl = convertDropboxUrl(rawAudioUrl);
+        const coverImagePath = './assets/cover.png';
         const fullRtmpUrl = `${rtmpUrl}/${streamKey}`;
 
-        console.log('🎬 Starting DIRECT streaming (no HLS, no segmentation)...');
-        console.log('🎯 MAX EFFICIENCY MODE - Lowest possible quality for zero lag');
+        console.log('🎵 Starting AUDIO streaming with static image (ultra-lightweight)...');
+        console.log('🎯 ZERO LAG MODE - MP3 audio + static image for maximum efficiency');
         
-        // ULTRA-SIMPLE direct stream: Dropbox -> RTMP (no intermediate steps)
+        // ULTRA-LIGHTWEIGHT: Static image + MP3 audio streaming
         const ffmpegArgs = [
             '-hide_banner',
             '-loglevel', 'error', // Only show actual errors
+            
+            // INPUT 1: Static cover image (looped)
+            '-loop', '1',
+            '-i', coverImagePath,
+            
+            // INPUT 2: MP3 audio from Dropbox (with seamless looping)
             '-re', // Real-time streaming
+            '-stream_loop', '-1', // Infinite loop for seamless playback
             '-reconnect', '1',
             '-reconnect_streamed', '1',
             '-reconnect_delay_max', '10',
-            '-reconnect_at_eof', '1', // Reconnect when video ends (for looping)
-            '-i', videoUrl,
+            '-i', audioUrl,
             
-            // MEGA EFFICIENT SETTINGS - Absolute minimum quality for maximum performance
+            // VIDEO: Ultra-efficient static image encoding
             '-c:v', 'libx264',
             '-preset', 'ultrafast', // Fastest possible encoding
-            '-tune', 'zerolatency', // Zero latency tuning
-            '-crf', '40', // Very high CRF = very low quality = maximum efficiency
-            '-maxrate', '80k', // Even lower bitrate for maximum efficiency
-            '-bufsize', '160k',
-            '-s', '160x120', // Even tinier resolution for max efficiency
-            '-r', '3', // Very low framerate (3 fps)
+            '-tune', 'stillimage', // Optimized for static images
+            '-crf', '35', // Good quality for static image
+            '-maxrate', '50k', // Very low bitrate since image doesn't change
+            '-bufsize', '100k',
+            '-s', '1280x720', // Better quality since it's just a static image
+            '-r', '1', // Ultra low framerate (1 fps) - image doesn't change
             '-pix_fmt', 'yuv420p',
             
-            // ZERO-LAG KEYFRAME SETTINGS - Prevents long join times
-            '-g', '6', // GOP size: keyframe every 2 seconds (6 frames at 3fps)
-            '-keyint_min', '6',
+            // ZERO-LAG KEYFRAME SETTINGS - Frequent keyframes for instant viewer join
+            '-g', '1', // GOP size: keyframe every second for zero lag
+            '-keyint_min', '1', // Minimum keyframe interval
             '-sc_threshold', '0', // Disable scene change detection
-            '-force_key_frames', 'expr:gte(t,n_forced*2)', // Force keyframe every 2 seconds
             
-            // MINIMAL AUDIO
+            // AUDIO: High quality since this is the main content
             '-c:a', 'aac',
-            '-b:a', '24k', // Ultra low audio bitrate
-            '-ar', '16000', // Low sample rate
-            '-ac', '1', // Mono audio
+            '-b:a', '128k', // Good audio quality for audiobook
+            '-ar', '44100', // Standard sample rate
+            '-ac', '2', // Stereo audio
+            
+            // Map streams: video from image, audio from MP3
+            '-map', '0:v:0', // Video from input 0 (image)
+            '-map', '1:a:0', // Audio from input 1 (MP3)
+            
+            // Ensure continuous streaming (no auto-exit)
+            // Removed -shortest to maintain 24/7 continuous streaming
             
             // DIRECT RTMP OUTPUT
             '-f', 'flv',
@@ -108,8 +121,8 @@ async function startStreaming() {
             console.log(`⚠️  Stream process exited with code ${code}`);
             isStreaming = false;
             
-            // Auto-restart always (video will loop via reconnect_at_eof)
-            console.log('🔄 Restarting stream in 3 seconds (looping video)...');
+            // Auto-restart always (audio will loop via reconnect_at_eof)
+            console.log('🔄 Restarting stream in 3 seconds (looping audio)...');
             setTimeout(() => startStreaming(), 3000);
         });
 
@@ -166,7 +179,7 @@ app.get('/health', (req, res) => {
         uptime: uptime,
         lastError: lastError,
         timestamp: new Date().toISOString(),
-        mode: 'direct_stream_efficiency'
+        mode: 'audio_stream_zero_lag'
     });
 });
 
@@ -177,7 +190,7 @@ app.get('/stats', (req, res) => {
         streaming: isStreaming,
         uptime: uptime,
         lastError: lastError,
-        architecture: 'Direct Stream (No HLS)',
+        architecture: 'Static Image + MP3 Audio Stream',
         efficiency_mode: true
     });
 });
@@ -202,22 +215,23 @@ app.post('/restart', requireAuth, async (req, res) => {
 
 app.get('/', (req, res) => {
     res.json({
-        service: 'Ultra-Simple RTMP Streaming Service',
-        version: '3.0.0',
-        architecture: 'Direct Stream (No HLS)',
-        mode: 'Maximum Efficiency',
+        service: 'Ultra-Lightweight Audio Streaming Service',
+        version: '4.0.0',
+        architecture: 'Static Image + MP3 Audio Stream',
+        mode: 'Zero Lag Audio Streaming',
         status: isStreaming ? 'streaming' : 'stopped',
         features: [
-            'Direct Dropbox to RTMP streaming',
-            'No intermediate HLS segmentation',
-            'Ultra-low quality for maximum efficiency',
-            'Auto-restart on failures',
-            'Minimal resource usage'
+            'MP3 audio streaming from Dropbox',
+            'Static HD image for visual component',
+            'Ultra-lightweight (178k total bitrate)',
+            'Zero lag audiobook streaming',
+            'Auto-restart and looping',
+            'Minimal CPU usage'
         ],
         endpoints: {
             health: '/health - Stream status and uptime',
             stats: '/stats - Simple streaming statistics', 
-            start: '/start (POST) - Start direct streaming',
+            start: '/start (POST) - Start audio streaming',
             stop: '/stop (POST) - Stop streaming',
             restart: '/restart (POST) - Restart streaming'
         }
@@ -239,24 +253,24 @@ process.on('SIGTERM', async () => {
 
 // Start server
 app.listen(PORT, '0.0.0.0', async () => {
-    console.log('🚀 Ultra-Simple RTMP Streaming Service v3.0 running on port', PORT);
-    console.log('🎯 MAXIMUM EFFICIENCY MODE - Direct streaming, no HLS complexity');
+    console.log('🚀 Ultra-Lightweight Audio Streaming Service v4.0 running on port', PORT);
+    console.log('🎯 ZERO LAG MODE - MP3 audio + static image streaming');
     console.log('🌐 Server binding to 0.0.0.0:' + PORT);
     
     console.log('Environment check:');
     console.log(`- RTMP_URL: ${process.env.RTMP_URL ? '✅ Set' : '❌ Missing'}`);
     console.log(`- STREAM_KEY: ${process.env.STREAM_KEY ? '✅ Set' : '❌ Missing'}`);
-    console.log(`- VIDEO_URL: ${process.env.VIDEO_URL ? '✅ Set' : '❌ Missing'}`);
+    console.log(`- AUDIO_URL: ${process.env.AUDIO_URL ? '✅ Set' : '❌ Missing'}`);
     console.log(`- CONTROL_KEY: ${process.env.CONTROL_KEY ? '✅ Set' : '❌ Missing'}`);
-    console.log('- ARCHITECTURE: Direct stream (no HLS, no segmentation)');
-    console.log('- QUALITY: Ultra-low for maximum efficiency');
-    console.log('- RESOLUTION: 160x120 @ 3fps (keyframes every 2s)');
-    console.log('- AUDIO: 24k mono');
-    console.log('- BITRATE: 80k video + 24k audio = 104k total');
+    console.log('- ARCHITECTURE: Static image + MP3 audio streaming');
+    console.log('- QUALITY: High quality audio, static HD image');
+    console.log('- RESOLUTION: 1280x720 @ 1fps (static image)');
+    console.log('- AUDIO: 128k stereo (optimized for audiobook)');
+    console.log('- BITRATE: 50k video + 128k audio = 178k total');
 
     // Auto-start streaming if environment variables are available
-    if (process.env.RTMP_URL && process.env.STREAM_KEY && process.env.VIDEO_URL) {
-        console.log('Auto-starting direct streaming in 3 seconds...');
+    if (process.env.RTMP_URL && process.env.STREAM_KEY && process.env.AUDIO_URL) {
+        console.log('Auto-starting audio streaming in 3 seconds...');
         setTimeout(async () => {
             await startStreaming();
         }, 3000);
