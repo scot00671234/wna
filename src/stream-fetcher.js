@@ -126,8 +126,9 @@ class StreamFetcher {
         
         // Fixed HLS-based pipeline for true continuity (no -re for faster prefetch)
         const hlsPlaylist = path.join(this.cacheDir, 'stream.m3u8');
-        // Hardware acceleration detection
-        const hwAccelArgs = process.env.FFMPEG_HWACCEL ? ['-hwaccel', process.env.FFMPEG_HWACCEL] : [];
+        // Hardware acceleration - only use if explicitly enabled and verified working
+        // Disabled by default for maximum compatibility across environments
+        const hwAccelArgs = [];
         
         const ffmpegArgs = [
             '-hide_banner',

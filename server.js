@@ -31,14 +31,9 @@ const config = {
     maxCacheSize: parseInt(process.env.MAX_CACHE_SIZE) || 30, // 30s cache for minimal RAM
 };
 
-// Auto-detect hardware acceleration
-if (!process.env.FFMPEG_HWACCEL) {
-    // Try to detect available hardware acceleration
-    const os = require('os');
-    if (os.platform() === 'linux') {
-        process.env.FFMPEG_HWACCEL = 'vaapi'; // Common on Linux VPS
-    }
-}
+// Hardware acceleration is disabled by default for compatibility
+// Only enable if explicitly set in environment variables
+// Auto-detection removed to prevent VAAPI issues in containerized environments
 
 // Middleware
 app.use(express.json());
