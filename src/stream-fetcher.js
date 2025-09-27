@@ -228,38 +228,11 @@ class StreamFetcher {
     }
 
     startFileSystemMonitoring() {
-        // Monitor cache directory for new segment files
-        if (this.fileWatcher) return; // Already monitoring
-        
-        console.log('👁️  Starting filesystem monitoring for segments...');
-        
-        // Check for new segments every 2 seconds
-        this.fileWatcher = setInterval(async () => {
-            if (!this.isRunning) {
-                clearInterval(this.fileWatcher);
-                this.fileWatcher = null;
-                return;
-            }
-            
-            try {
-                const files = await fs.readdir(this.cacheDir);
-                const segmentFiles = files.filter(f => f.startsWith('segment_') && f.endsWith('.ts'));
-                
-                for (const file of segmentFiles) {
-                    const match = file.match(/segment_(\d+)\.ts/);
-                    if (match) {
-                        const segmentId = parseInt(match[1]);
-                        if (!this.segments.has(segmentId)) {
-                            console.log(`🔍 Found new segment via filesystem: ${segmentId}`);
-                            await this.registerSegment(segmentId);
-                        }
-                    }
-                }
-            } catch (error) {
-                // Cache directory might not exist yet
-                console.log(`📁 Cache directory check: ${error.message}`);
-            }
-        }, 2000);
+        // DISABLED: Filesystem monitoring removed for performance optimization
+        // FFmpeg output parsing is sufficient for segment detection
+        // This eliminates duplicate segment registration and reduces I/O overhead
+        console.log('📈 Filesystem monitoring disabled for optimized performance');
+        return;
     }
 
     async registerSegment(segmentId) {
