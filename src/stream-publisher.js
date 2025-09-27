@@ -87,57 +87,69 @@ class StreamPublisher {
         // Stream directly from HLS to external RTMP endpoint
         let ffmpegArgs;
         
+        // Environment-optimized settings for VPS stability
+        const isVPS = process.env.DEPLOYMENT_ENV === 'vps' || process.env.NODE_ENV === 'production';
+        
         // Quality ladder - use different settings based on endpoint priority
         if (endpoint.priority === 1) {
-            // Primary endpoint - full quality
+            // Primary endpoint - optimized for environment
             ffmpegArgs = [
                 '-hide_banner',
                 '-loglevel', 'warning',
                 '-re', // Read at native framerate for real-time streaming
                 '-f', 'hls',
-                '-live_start_index', '-3', // Follow live edge
+                // VPS: More conservative live edge following to prevent segment missing errors
+                '-live_start_index', isVPS ? '-5' : '-3', 
                 '-i', inputPath, // HLS playlist file
+                // VPS: Add HLS input options for better stability
+                ...(isVPS ? ['-reconnect', '1', '-reconnect_at_eof', '1'] : []),
                 '-c:v', 'libx264',
-                '-preset', 'veryfast', 
-                '-crf', '35', // Ultra-high CRF for minimal data
-                '-maxrate', '200k', // Ultra-low bitrate
-                '-bufsize', '400k',
-                '-s', '320x240', // Tiny resolution
-                '-r', '5', // Ultra-low framerate
+                '-preset', isVPS ? 'fast' : 'veryfast', // Better encoding balance for VPS
+                '-crf', '35', 
+                '-maxrate', '200k', 
+                '-bufsize', isVPS ? '800k' : '400k', // Larger buffer for VPS
+                '-s', '320x240', 
+                '-r', '5', 
                 '-c:a', 'aac',
-                '-b:a', '32k', // Minimal audio for speech
-                '-ar', '16000', // Lower sample rate
+                '-b:a', '32k', 
+                '-ar', '16000', 
                 '-ac', '1', // Mono audio
+                // VPS: Add threading and error resilience
+                ...(isVPS ? ['-threads', '2', '-max_muxing_queue_size', '1024'] : []),
                 '-f', 'flv',
                 '-flvflags', 'no_duration_filesize',
                 '-rtmp_live', 'live',
-                '-rtmp_buffer', '2000',
+                '-rtmp_buffer', isVPS ? '4000' : '2000', // Larger RTMP buffer for VPS
                 endpoint.url
             ];
         } else {
-            // Backup endpoint - lower quality for reliability
+            // Backup endpoint - VPS-optimized for maximum reliability 
             ffmpegArgs = [
                 '-hide_banner',
                 '-loglevel', 'warning',
                 '-re',
                 '-f', 'hls',
-                '-live_start_index', '-3',
+                '-live_start_index', isVPS ? '-7' : '-3', // Extra conservative for backup
                 '-i', inputPath,
+                // VPS: Add extra resilience for backup connection
+                ...(isVPS ? ['-reconnect', '1', '-reconnect_at_eof', '1'] : []),
                 '-c:v', 'libx264',
-                '-preset', 'ultrafast',
+                '-preset', 'ultrafast', // Fastest preset for backup
                 '-crf', '38', // Maximum CRF for backup
-                '-maxrate', '128k', // Absolute minimum bitrate
-                '-bufsize', '256k',
+                '-maxrate', isVPS ? '128k' : '128k', 
+                '-bufsize', isVPS ? '512k' : '256k', // Larger buffer for VPS backup
                 '-s', '240x180', // Minimal resolution
                 '-r', '3', // Minimal framerate
                 '-c:a', 'aac',
                 '-b:a', '24k', // Minimal audio for backup
                 '-ar', '16000',
                 '-ac', '1', // Mono
+                // VPS: Add threading for backup
+                ...(isVPS ? ['-threads', '1'] : []), // Single thread for backup to reduce resource contention
                 '-f', 'flv', 
                 '-flvflags', 'no_duration_filesize',
                 '-rtmp_live', 'live',
-                '-rtmp_buffer', '1000',
+                '-rtmp_buffer', isVPS ? '2000' : '1000', // Larger buffer for VPS backup
                 endpoint.url
             ];
         }

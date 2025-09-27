@@ -130,6 +130,13 @@ class StreamFetcher {
         // Disabled by default for maximum compatibility across environments
         const hwAccelArgs = [];
         
+        // VPS-optimized settings to reduce disk I/O and improve stability
+        const isVPS = process.env.DEPLOYMENT_ENV === 'vps' || process.env.NODE_ENV === 'production';
+        const preset = isVPS ? 'fast' : 'ultrafast'; // Better quality/CPU balance for VPS
+        const hlsFlags = isVPS ? 
+            'delete_segments+append_list+omit_endlist+independent_segments+temp_file' : 
+            'delete_segments+append_list+omit_endlist+independent_segments';
+
         const ffmpegArgs = [
             '-hide_banner',
             '-loglevel', 'warning',
@@ -137,28 +144,34 @@ class StreamFetcher {
             '-reconnect', '1',
             '-reconnect_streamed', '1', 
             '-reconnect_delay_max', '30',
+            // VPS: Add additional network resilience
+            ...(isVPS ? ['-reconnect_at_eof', '1', '-multiple_requests', '1'] : []),
             '-i', this.videoUrl,
-            // ULTRA-OPTIMIZED for audiobooks - minimal CPU/bandwidth usage
+            // Environment-optimized encoding settings
             '-c:v', 'libx264',
-            '-preset', 'ultrafast', // Fastest encoding
+            '-preset', preset,
             '-tune', 'stillimage', // Optimized for static content
-            '-crf', '35', // Very high CRF for minimal video data
-            '-maxrate', '200k', // Ultra-low bitrate for audiobooks
-            '-bufsize', '400k',
-            '-s', '320x240', // Tiny resolution for audiobooks
-            '-r', '5', // Ultra-low framerate
+            '-crf', '35', // High CRF for minimal data
+            '-maxrate', '200k', 
+            '-bufsize', isVPS ? '800k' : '400k', // Larger buffer for VPS stability
+            '-s', '320x240', 
+            '-r', '5', 
             '-c:a', 'aac',
-            '-b:a', '32k', // Minimal audio bitrate for speech
-            '-ar', '16000', // Lower sample rate for speech
+            '-b:a', '32k', 
+            '-ar', '16000', 
             '-ac', '1', // Mono audio
             '-g', `${Math.ceil(this.segmentDuration * 5)}`, // GOP size optimized
             '-force_key_frames', `expr:gte(t,n_forced*${this.segmentDuration})`,
+            // VPS: Add threading for better performance
+            ...(isVPS ? ['-threads', '2'] : []),
             '-f', 'hls',
             '-hls_time', this.segmentDuration.toString(),
-            '-hls_flags', 'delete_segments+append_list+omit_endlist+independent_segments',
+            '-hls_flags', hlsFlags,
             '-hls_list_size', Math.ceil(this.maxCacheSize / this.segmentDuration),
             '-hls_segment_type', 'mpegts',
             '-hls_segment_filename', path.join(this.cacheDir, 'segment_%d.ts'),
+            // VLS: Add start number to prevent segment conflicts
+            ...(isVPS ? ['-hls_start_number_source', 'datetime'] : []),
             hlsPlaylist
         ];
 

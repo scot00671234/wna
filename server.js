@@ -20,15 +20,19 @@ let lastError = null;
 let startTime = null;
 let healthMonitor = null;
 
-// ULTRA-OPTIMIZED configuration for lag-free 24/7 streaming
+// Environment-optimized streaming configuration
+const isVPS = process.env.DEPLOYMENT_ENV === 'vps' || process.env.NODE_ENV === 'production';
 const config = {
-    // Force tmpfs in production for zero disk I/O
-    cacheDir: process.env.NODE_ENV === 'production' ? '/tmp/stream_cache' : 
+    // VPS environments use tmpfs for better I/O performance, Replit uses optimized cache
+    cacheDir: isVPS ? '/tmp/stream_cache' : 
               (process.env.USE_TMPFS === 'true' ? '/tmp/stream_cache' : './cache'),
     mediamtxHost: process.env.MEDIAMTX_HOST || 'localhost',
-    segmentDuration: parseFloat(process.env.SEGMENT_DURATION) || 0.5, // 0.5s segments for ultra-low latency
-    lookaheadSeconds: parseInt(process.env.LOOKAHEAD_SECONDS) || 10, // 10s lookahead for efficiency  
-    maxCacheSize: parseInt(process.env.MAX_CACHE_SIZE) || 30, // 30s cache for minimal RAM
+    // VPS-optimized: Longer segments (2s) reduce disk I/O overhead vs ultra-low latency (0.5s) 
+    segmentDuration: parseFloat(process.env.SEGMENT_DURATION) || (isVPS ? 2.0 : 0.5),
+    // VPS-optimized: Larger lookahead buffer for stability 
+    lookaheadSeconds: parseInt(process.env.LOOKAHEAD_SECONDS) || (isVPS ? 20 : 10),
+    // VPS-optimized: Larger cache for better buffering
+    maxCacheSize: parseInt(process.env.MAX_CACHE_SIZE) || (isVPS ? 60 : 30),
 };
 
 // Hardware acceleration is disabled by default for compatibility
@@ -457,6 +461,7 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🏗️  Architecture: Multi-Process with Local Relay (MediaMTX)`);
     
     console.log('Environment check:');
+    console.log(`- ENVIRONMENT: ${isVPS ? 'VPS (optimized for stability)' : 'Replit (optimized for low latency)'}`);
     console.log(`- PORT: ${PORT} (${process.env.PORT ? 'from env' : 'default'})`);
     console.log(`- RTMP_URL: ${process.env.RTMP_URL ? '✅ Set' : '❌ Missing'}`);
     console.log(`- STREAM_KEY: ${process.env.STREAM_KEY ? '✅ Set' : '❌ Missing'}`);
@@ -465,9 +470,9 @@ app.listen(PORT, '0.0.0.0', async () => {
     console.log(`- CONTROL_KEY: ${process.env.CONTROL_KEY ? '✅ Set' : '❌ Missing'}`);
     console.log(`- CACHE_DIR: ${config.cacheDir} (${config.cacheDir.includes('/tmp/') ? 'tmpfs/RAM' : 'disk'})`);
     console.log(`- FFMPEG_HWACCEL: ${process.env.FFMPEG_HWACCEL || 'software only'}`);
-    console.log(`- SEGMENT_DURATION: ${config.segmentDuration}s (ultra-low latency)`);
-    console.log(`- LOOKAHEAD: ${config.lookaheadSeconds}s (minimal)`);
-    console.log(`- MAX_CACHE: ${config.maxCacheSize}s (minimal RAM usage)`);
+    console.log(`- SEGMENT_DURATION: ${config.segmentDuration}s (${isVPS ? 'VPS-optimized' : 'ultra-low latency'})`);
+    console.log(`- LOOKAHEAD: ${config.lookaheadSeconds}s (${isVPS ? 'VPS buffer' : 'minimal'})`);
+    console.log(`- MAX_CACHE: ${config.maxCacheSize}s (${isVPS ? 'VPS-optimized RAM usage' : 'minimal RAM usage'})`);
     
     // Auto-start streaming after 5 seconds to allow system stabilization
     console.log('Auto-starting optimized streaming system in 5 seconds...');
